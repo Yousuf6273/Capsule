@@ -19,7 +19,11 @@ struct VaultRouter: View {
                 case .sealed:
                     WaitingView(vault: vault)
                 case .unlocked:
-                    OpenedVaultView(vault: vault)
+                    if vault.hasCompletedReveal {
+                        AlbumView(vault: vault)
+                    } else {
+                        RevealFlowView(vault: vault)
+                    }
                 }
             } else {
                 Text("This vault no longer exists.")
@@ -33,30 +37,3 @@ struct VaultRouter: View {
     }
 }
 
-/// Placeholder for unlocked vaults until the reveal sequence (milestone 5–6)
-/// and permanent album (milestone 9) land.
-struct OpenedVaultView: View {
-    @Environment(\.tripTheme) private var theme
-    let vault: Vault
-
-    var body: some View {
-        ZStack {
-            ThemedMeshBackground()
-            VStack(spacing: 12) {
-                Text("✨")
-                    .font(.system(size: 44))
-                Text(vault.displayName)
-                    .font(CapsuleFont.display(26, .extraBold))
-                    .foregroundStyle(Color.capsuleCream)
-                Text("\(vault.memoryCount) memories · opened \(vault.unlockedAt?.formatted(date: .abbreviated, time: .omitted) ?? "")")
-                    .monoLabel(size: 10, color: .capsuleCream.opacity(0.8), tracking: 0.8)
-                Text("The unlock sequence, reveal slideshow and wrapped recap arrive in milestones 5–8.")
-                    .font(CapsuleFont.body(12.5, .medium))
-                    .foregroundStyle(Color.capsuleCream.opacity(0.75))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                    .padding(.top, 6)
-            }
-        }
-    }
-}

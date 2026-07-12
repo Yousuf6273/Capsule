@@ -104,6 +104,15 @@ final class MockVaultService: VaultServicing {
         return vaults[idx]
     }
 
+    func update(vault: Vault) async throws {
+        var vaults = stored() ?? []
+        guard let idx = vaults.firstIndex(where: { $0.id == vault.id }) else {
+            throw CapsuleError.vaultNotFound
+        }
+        vaults[idx] = vault
+        persist(vaults)
+    }
+
     static func generateInviteCode() -> String {
         let alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789" // no easily-confused chars
         return String((0..<6).map { _ in alphabet.randomElement()! })

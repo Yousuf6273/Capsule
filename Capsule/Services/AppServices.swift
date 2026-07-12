@@ -18,6 +18,7 @@ protocol VaultServicing {
                      creator: UserProfile) async throws -> Vault
     func joinVault(inviteCode: String, user: UserProfile) async throws -> Vault
     func markReady(vaultId: String, userId: String) async throws -> Vault
+    func update(vault: Vault) async throws
 }
 
 // ── App-wide observable state ────────────────────────────────────
@@ -30,11 +31,23 @@ final class AppModel {
 
     let auth: AuthServicing
     let vaultService: VaultServicing
+    let memoryStore: MemoryStore
+    let uploadQueue: UploadQueue
 
+    @MainActor
     init(auth: AuthServicing = MockAuthService(),
          vaultService: VaultServicing = MockVaultService()) {
         self.auth = auth
         self.vaultService = vaultService
+        let store = MemoryStore()
+        self.memoryStore = store
+        self.uploadQueue = UploadQueue()
+        uploadQueue.memoryStore = store
+        uploadQueue.onUploaded = { [weak self] memory in
+            guard let self, let idx = vaults.firstIndex(where: { $0.id == memory.vaultId }) else { return }
+            vaults[idx].memoryCount += 1
+            Task { try? await self.vaultService.update(vault: self.vaults[idx]) }
+        }
     }
 
     var isSignedIn: Bool { profile != nil }
@@ -60,6 +73,7 @@ final class AppModel {
     func restore() async {
         profile = await auth.restoreSession()
         if let profile {
+            uploadQueue.uploaderId = profile.id
             vaults = (try? await vaultService.loadVaults(for: profile.id)) ?? []
         }
         isRestoringSession = false
@@ -69,7 +83,27 @@ final class AppModel {
     func signIn(displayName: String) async throws {
         let p = try await auth.signIn(displayName: displayName)
         profile = p
+        uploadQueue.uploaderId = p.id
         vaults = (try? await vaultService.loadVaults(for: p.id)) ?? []
+    }
+
+    // In production only the Cloud Function flips state — this local path
+    // backs the mock stack and the demo "simulate unlock" button.
+    @MainActor
+    func unlockLocally(vaultId: String) {
+        guard let idx = vaults.firstIndex(where: { $0.id == vaultId }) else { return }
+        vaults[idx].state = .unlocked
+        vaults[idx].unlockedAt = .now
+        let vault = vaults[idx]
+        Task { try? await vaultService.update(vault: vault) }
+    }
+
+    @MainActor
+    func markRevealCompleted(vaultId: String) {
+        guard let idx = vaults.firstIndex(where: { $0.id == vaultId }) else { return }
+        vaults[idx].hasCompletedReveal = true
+        let vault = vaults[idx]
+        Task { try? await vaultService.update(vault: vault) }
     }
 
     @MainActor

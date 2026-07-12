@@ -61,15 +61,26 @@ struct WaitingView: View {
 
                 Spacer()
 
-                if case .everyoneReady = vault.unlockCondition, !currentUserReady {
-                    Button(action: markReady) {
-                        if isMarkingReady { ProgressView().tint(.white) }
-                        else { Text("I'm ready to open it") }
+                VStack(spacing: 10) {
+                    if case .everyoneReady = vault.unlockCondition, !currentUserReady {
+                        Button(action: markReady) {
+                            if isMarkingReady { ProgressView().tint(.white) }
+                            else { Text("I'm ready to open it") }
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
                     }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
+                    #if DEBUG
+                    // Demo shortcut while the mock backend runs — in production
+                    // only the Cloud Function can flip a vault to unlocked.
+                    Button("Skip ahead — simulate unlock ✨") {
+                        model.unlockLocally(vaultId: vault.id)
+                    }
+                    .font(CapsuleFont.body(12.5, .semibold))
+                    .foregroundStyle(Color.capsuleDim)
+                    #endif
                 }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
             }
         }
     }

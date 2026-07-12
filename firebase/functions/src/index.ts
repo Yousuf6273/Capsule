@@ -51,6 +51,26 @@ export const markReady = onCall(async (request) => {
   return { unlocked: shouldUnlock };
 });
 
+/** Callable: register an invite code for a vault the caller belongs to. */
+export const registerInviteCode = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  const vaultId = request.data?.vaultId as string;
+  const code = (request.data?.code as string)?.toUpperCase()?.trim();
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
+  if (!vaultId || !code) throw new HttpsError("invalid-argument", "vaultId and code required.");
+
+  const vault = (await db.doc(`vaults/${vaultId}`).get()).data();
+  if (!vault?.memberIds?.includes(uid)) {
+    throw new HttpsError("permission-denied", "Not a member of this vault.");
+  }
+  const codeRef = db.doc(`inviteCodes/${code}`);
+  if ((await codeRef.get()).exists) {
+    throw new HttpsError("already-exists", "Code already in use.");
+  }
+  await codeRef.set({ vaultId, createdBy: uid });
+  return { ok: true };
+});
+
 /** Callable: join a vault by invite code (codes are not client-readable). */
 export const joinByInviteCode = onCall(async (request) => {
   const uid = request.auth?.uid;

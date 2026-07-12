@@ -2,20 +2,27 @@ import SwiftUI
 import PhotosUI
 
 /// Collecting screen: full-bleed cover header, "memory sealed" toast on upload,
-/// locked/obscured grid of your own drops, member strip.
-/// (Local-only for now — the offline queue + real upload pipeline is milestone 2.)
+/// locked/obscured grid of your own drops, member strip. Uploads go through the
+/// offline-tolerant UploadQueue — sealing is instant and local, sync follows.
 struct CollectingView: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.tripTheme) private var theme
     let vault: Vault
 
-    @State private var sealedCount: Int
-    @State private var lockedThumbs: [UIImage] = []
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var toastPulse = false
 
-    init(vault: Vault) {
-        self.vault = vault
-        _sealedCount = State(initialValue: vault.memoryCount)
+    private var myDrops: [Memory] {
+        guard let uid = model.profile?.id else { return [] }
+        return model.memoryStore.myDrops(vaultId: vault.id, userId: uid)
+    }
+
+    private var pendingCount: Int {
+        model.uploadQueue.pendingCount(vaultId: vault.id)
+    }
+
+    private var sealedTotal: Int {
+        max(vault.memoryCount, myDrops.count) + pendingCount
     }
 
     var body: some View {
@@ -29,6 +36,9 @@ struct CollectingView: View {
 
                     VStack(alignment: .leading, spacing: 18) {
                         toast
+                        if !model.uploadQueue.isOnline && pendingCount > 0 {
+                            offlineBanner
+                        }
                         memberStrip
 
                         HStack {
@@ -36,7 +46,7 @@ struct CollectingView: View {
                                 .font(CapsuleFont.display(15, .bold))
                                 .foregroundStyle(Color.capsuleCream)
                             Spacer()
-                            Text("\(lockedThumbs.count)")
+                            Text("\(myDrops.count + pendingCount)")
                                 .font(CapsuleFont.mono(11, .medium))
                                 .foregroundStyle(Color.capsuleDim2)
                         }
@@ -98,7 +108,7 @@ struct CollectingView: View {
                 .scaleEffect(toastPulse ? 1.25 : 1)
             (Text("Another memory sealed. ")
                 .foregroundStyle(Color.capsuleCream)
-             + Text("\(sealedCount) total")
+             + Text("\(sealedTotal) total")
                 .foregroundStyle(theme.secondary))
                 .font(CapsuleFont.body(12.5, .semibold))
         }
@@ -114,6 +124,19 @@ struct CollectingView: View {
         .scaleEffect(toastPulse ? 1.02 : 1)
     }
 
+    private var offlineBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 12, weight: .semibold))
+            Text("\(pendingCount) sealed offline — will sync when you're back in signal")
+                .font(CapsuleFont.body(11.5, .semibold))
+        }
+        .foregroundStyle(Color.poolGold)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(cornerRadius: 14)
+    }
+
     private var memberStrip: some View {
         HStack(spacing: -9) {
             ForEach(Array(vault.members.enumerated()), id: \.element.id) { i, member in
@@ -125,24 +148,14 @@ struct CollectingView: View {
 
     private var lockedGrid: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-            ForEach(Array(lockedThumbs.enumerated()), id: \.offset) { _, thumb in
-                ZStack {
-                    Image(uiImage: thumb)
-                        .resizable()
-                        .scaledToFill()
-                    Color(hex: "0A0F1C").opacity(0.35)
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.capsuleCream)
-                }
-                .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.capsuleGlassBorder, lineWidth: 1.5))
-                .transition(.scale(scale: 0.7).combined(with: .opacity))
+            ForEach(myDrops) { memory in
+                lockedCell(model.memoryStore.lockedThumb(for: memory), pending: false)
+            }
+            ForEach(model.uploadQueue.pending.filter { $0.vaultId == vault.id }) { item in
+                lockedCell(LocalStore.image(named: item.lockedThumbFileName), pending: true)
             }
 
-            PhotosPicker(selection: $pickerItems, maxSelectionCount: 10, matching: .any(of: [.images, .videos])) {
+            PhotosPicker(selection: $pickerItems, maxSelectionCount: 10, matching: .images) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(Color.white.opacity(0.04))
@@ -157,19 +170,33 @@ struct CollectingView: View {
         }
     }
 
-    /// Generates the locked derivative immediately — heavily blurred + darkened,
-    /// matching the mockup's `.film-cell` treatment. Originals never render here.
+    private func lockedCell(_ thumb: UIImage?, pending: Bool) -> some View {
+        ZStack {
+            if let thumb {
+                Image(uiImage: thumb).resizable().scaledToFill()
+            } else {
+                Color.capsuleCharcoal3
+            }
+            Color(hex: "0A0F1C").opacity(0.35)
+            Image(systemName: pending ? "arrow.triangle.2.circlepath" : "lock.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(pending ? Color.poolGold : Color.capsuleCream)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .strokeBorder(Color.capsuleGlassBorder, lineWidth: 1.5))
+        .transition(.scale(scale: 0.7).combined(with: .opacity))
+    }
+
     private func ingest(_ items: [PhotosPickerItem]) {
         guard !items.isEmpty else { return }
         pickerItems = []
         Task {
             for item in items {
-                guard let data = try? await item.loadTransferable(type: Data.self),
-                      let image = UIImage(data: data),
-                      let locked = Self.lockedThumbnail(from: image) else { continue }
+                guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
                 withAnimation(.spring(duration: 0.45)) {
-                    lockedThumbs.append(locked)
-                    sealedCount += 1
+                    model.uploadQueue.enqueue(imageData: data, vaultId: vault.id, capturedAt: .now)
                 }
                 withAnimation(.spring(duration: 0.3)) { toastPulse = true }
                 try? await Task.sleep(for: .milliseconds(350))
@@ -178,11 +205,11 @@ struct CollectingView: View {
         }
     }
 
+    /// Locked derivative: heavily pixelated + darkened, matching `.film-cell`.
     static func lockedThumbnail(from image: UIImage) -> UIImage? {
         let side: CGFloat = 120
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
-        // Downscale tiny, then draw scaled up — cheap, irreversible obscuring.
         let tiny = UIGraphicsImageRenderer(size: CGSize(width: 12, height: 12), format: format).image { _ in
             image.draw(in: CGRect(x: 0, y: 0, width: 12, height: 12))
         }

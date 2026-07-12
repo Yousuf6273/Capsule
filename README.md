@@ -33,11 +33,17 @@ Then add the Firebase iOS SDK via SPM, drop `GoogleService-Info.plist` into `Cap
 ## Milestones
 
 1. ✅ Auth, create/join vault, invite flow (mock-backed)
-2. Upload flow with blind contribution + offline queue (background `URLSession`, SwiftData `PendingUpload`)
-3. Server-enforced unlock (Firebase wiring; rules/functions already written)
-4. ✅ Color extraction + dynamic theming (`ThemeExtractor`, `TripTheme`) — wired into Create
-5. Unlock door sequence + pre-reveal recap teaser
-6. Reveal slideshow (ken-burns, develop effect)
-7. Quiz mode (realtime Firestore listeners)
-8. Full wrapped screen + shareable card (`ImageRenderer`)
-9. Permanent album
+2. ✅ Blind contribution + offline queue (`UploadQueue`: instant local sealing, disk-persisted, NWPathMonitor drain)
+3. ✅ Server-enforced unlock — rules/functions written; client `FirebaseServices.swift` compiles automatically once the Firebase SDK is added (`#if canImport`)
+4. ✅ Color extraction + dynamic theming (`ThemeExtractor`, `TripTheme`)
+5. ✅ Unlock door sequence + pre-reveal recap teaser (mockup timing: text 0.3s → light 1.4s → doors 2.0s)
+6. ✅ Reveal slideshow (develop effect, ken-burns, story bars, tap navigation)
+7. ✅ Quiz mode (prediction, guess-who-took, which-day; simulated friends via `QuizTransporting` — Firestore listener transport slots in)
+8. ✅ Wrapped screen + shareable card (`ImageRenderer` → `ShareLink`)
+9. ✅ Permanent day-grouped album + memory detail
+
+**Demo path in the simulator:** sign in → tap the Kefalonia hero → "Skip ahead — simulate unlock ✨" (DEBUG-only button) → doors → teaser → slideshow → quiz → wrapped → album.
+
+### Going live (the remaining backend step)
+
+The app runs fully on the mock stack. To go live: create a Firebase project, deploy `firebase/`, add the Firebase iOS SDK via SPM (Auth, Firestore, Storage, Functions, Messaging), drop in `GoogleService-Info.plist`, and swap the `AppModel()` initializer to the Firebase services. Push notifications additionally need an Apple Developer account + APNs key uploaded to FCM.
