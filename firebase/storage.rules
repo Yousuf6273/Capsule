@@ -1,0 +1,41 @@
+rules_version = '2';
+
+// Storage layout:
+//   vaults/{vaultId}/media/{memoryId}        ← originals: UNREADABLE until unlock
+//   vaults/{vaultId}/lockedThumbs/{memoryId} ← blurred derivatives: member-readable
+//   vaults/{vaultId}/cover.jpg               ← cover photo: member-readable (theme source)
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function vault(vaultId) {
+      return firestore.get(/databases/(default)/documents/vaults/$(vaultId)).data;
+    }
+
+    function isMember(vaultId) {
+      return request.auth != null && request.auth.uid in vault(vaultId).memberIds;
+    }
+
+    match /vaults/{vaultId}/cover.jpg {
+      allow read: if isMember(vaultId);
+      allow write: if isMember(vaultId) && request.resource.size < 15 * 1024 * 1024;
+    }
+
+    match /vaults/{vaultId}/lockedThumbs/{memoryId} {
+      allow read: if isMember(vaultId);
+      allow write: if isMember(vaultId)
+        && vault(vaultId).state == 'collecting'
+        && request.resource.size < 300 * 1024; // tiny blurred derivative only
+    }
+
+    match /vaults/{vaultId}/media/{memoryId} {
+      // Upload while collecting; sealed the instant it lands.
+      allow write: if isMember(vaultId)
+        && vault(vaultId).state == 'collecting'
+        && request.resource.size < 500 * 1024 * 1024;
+
+      // THE LOCK — no reads, for anyone, until the Cloud Function flips state.
+      allow read: if isMember(vaultId) && vault(vaultId).state == 'unlocked';
+    }
+  }
+}

@@ -1,0 +1,6 @@
+.DS_Store
+xcuserdata/
+DerivedData/
+firebase/functions/node_modules/
+firebase/functions/lib/
+GoogleService-Info.plist

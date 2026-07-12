@@ -1,0 +1,89 @@
+rules_version = '2';
+
+// Capsule — server-enforced blind vault.
+// The trust premise lives here: sealed content is unreadable by ANY client,
+// including the uploader, until the vault's state is flipped to "unlocked"
+// by a Cloud Function. Clients can never write `state` themselves.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember(vaultId) {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/vaults/$(vaultId)).data.memberIds;
+    }
+
+    function vaultState(vaultId) {
+      return get(/databases/$(database)/documents/vaults/$(vaultId)).data.state;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /vaults/{vaultId} {
+      // Metadata (name, cover, counts, countdown) is member-visible always.
+      allow read: if isMember(vaultId);
+
+      allow create: if signedIn()
+        && request.resource.data.state == 'collecting'
+        && request.auth.uid in request.resource.data.memberIds;
+
+      // Members may update ONLY safe fields. `state`, `unlockedAt` and the
+      // stats are function-only (via Admin SDK, which bypasses rules).
+      allow update: if isMember(vaultId)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['state', 'unlockedAt', 'createdAt', 'inviteCode']);
+
+      allow delete: if false;
+
+      // ── Memories: the sealed content ──────────────────────────
+      match /memories/{memoryId} {
+        // Anyone in the vault can seal a memory while collecting.
+        allow create: if isMember(vaultId)
+          && vaultState(vaultId) == 'collecting'
+          && request.resource.data.uploaderId == request.auth.uid;
+
+        // THE LOCK: metadata (captions, timestamps, storage paths) is
+        // readable only after the function unlocks the vault.
+        allow read: if isMember(vaultId) && vaultState(vaultId) == 'unlocked';
+
+        allow update, delete: if false;
+      }
+
+      // Locked thumbnails registry — safe derivatives, member-visible while sealed
+      // so the collecting grid can render your own drops.
+      match /lockedThumbs/{memoryId} {
+        allow create: if isMember(vaultId) && vaultState(vaultId) == 'collecting';
+        allow read: if isMember(vaultId);
+        allow update, delete: if false;
+      }
+
+      // Recap stats + quiz answer key: written by the unlock function only.
+      match /recap/{doc} {
+        allow read: if isMember(vaultId) && vaultState(vaultId) == 'unlocked';
+        allow write: if false;
+      }
+
+      // Quiz session: members submit guesses; correct answers are stored in
+      // /recap (unreadable pre-unlock) and copied in by the function per round.
+      match /quiz/{doc} {
+        allow read: if isMember(vaultId) && vaultState(vaultId) == 'unlocked';
+        allow update: if isMember(vaultId) && vaultState(vaultId) == 'unlocked'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['guesses', 'presence']);
+        allow create, delete: if false;
+      }
+    }
+
+    // Invite codes: codeDoc = { vaultId }. Joining goes through a callable
+    // function so codes can't be enumerated to read vault data.
+    match /inviteCodes/{code} {
+      allow read, write: if false;
+    }
+  }
+}
