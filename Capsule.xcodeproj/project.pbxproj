@@ -26,10 +26,6 @@
 			exceptions = (
 				CA0000000000000000000020 /* Exceptions for "Capsule" folder in "Capsule" target */,
 			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
 			path = Capsule;
 			sourceTree = "<group>";
 		};

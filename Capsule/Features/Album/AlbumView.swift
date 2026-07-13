@@ -7,8 +7,15 @@ struct AlbumView: View {
     let vault: Vault
 
     @State private var selected: Memory?
+    @State private var showWrapped = false
+    @State private var showQuiz = false
 
     private var memories: [Memory] { model.memoryStore.memories(for: vault.id) }
+
+    private var stats: RecapStats {
+        RecapStats.compute(vault: vault, memories: memories,
+                           currentUserId: model.profile?.id ?? "")
+    }
 
     private var byDay: [(day: Int, items: [Memory])] {
         let all = memories
@@ -51,8 +58,22 @@ struct AlbumView: View {
                 .padding(.bottom, 60)
             }
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                GlassIconButton(systemName: "gamecontroller.fill") { showQuiz = true }
+                GlassIconButton(systemName: "sparkles") { showWrapped = true }
+            }
+        }
         .sheet(item: $selected) { memory in
             MemoryDetailView(vault: vault, memory: memory)
+                .tripTheme(vault.theme)
+        }
+        .fullScreenCover(isPresented: $showWrapped) {
+            RecapWrappedView(vault: vault, stats: stats) { showWrapped = false }
+                .tripTheme(vault.theme)
+        }
+        .fullScreenCover(isPresented: $showQuiz) {
+            QuizView(vault: vault, memories: memories, stats: stats) { showQuiz = false }
                 .tripTheme(vault.theme)
         }
     }
