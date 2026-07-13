@@ -1,5 +1,6 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import SwiftUI
 import UIKit
 
 /// Extracts the two dominant theme colors from a cover photo using Core Image's
@@ -24,8 +25,10 @@ enum ThemeExtractor {
         }
 
         // Second color: best remaining cluster that contrasts with the first.
-        let second = scored.dropFirst().max { a, b in
-            pairScore(first.color, a.color) * a.score < pairScore(first.color, b.color) * b.score
+        let second = scored.dropFirst().max { a, b -> Bool in
+            let scoreA: Double = pairScore(first.color, a.color) * a.score
+            let scoreB: Double = pairScore(first.color, b.color) * b.score
+            return scoreA < scoreB
         }?.color ?? UIColor(Color.poolGold)
 
         return TripTheme(primaryHex: hex(first.color), secondaryHex: hex(second))
@@ -60,11 +63,11 @@ enum ThemeExtractor {
                        format: .RGBA8,
                        colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
 
-        return (0..<count).map { i in
-            UIColor(red: CGFloat(bitmap[i * 4]) / 255,
-                    green: CGFloat(bitmap[i * 4 + 1]) / 255,
-                    blue: CGFloat(bitmap[i * 4 + 2]) / 255,
-                    alpha: 1)
+        return (0..<count).map { i -> UIColor in
+            let r: CGFloat = CGFloat(bitmap[i * 4]) / 255
+            let g: CGFloat = CGFloat(bitmap[i * 4 + 1]) / 255
+            let b: CGFloat = CGFloat(bitmap[i * 4 + 2]) / 255
+            return UIColor(red: r, green: g, blue: b, alpha: 1)
         }
     }
 
