@@ -16,13 +16,12 @@ struct WaitingView: View {
         ZStack {
             CoverArt(vault: vault, dimmed: true)
                 .ignoresSafeArea()
-                .saturation(0.7)
-                .brightness(-0.18)
+                .saturation(0.85)
 
             LinearGradient(
                 stops: [
-                    .init(color: Color(hex: "0A0F1C").opacity(0.5), location: 0),
-                    .init(color: Color(hex: "0A0F1C").opacity(0.75), location: 0.6),
+                    .init(color: Color(hex: "0A0F1C").opacity(0.05), location: 0),
+                    .init(color: Color(hex: "0A0F1C").opacity(0.3), location: 0.6),
                     .init(color: Color.capsuleCharcoal2, location: 1),
                 ],
                 startPoint: .top, endPoint: .bottom)
