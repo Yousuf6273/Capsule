@@ -79,20 +79,30 @@ final class UploadQueue {
     }
 
     /// Seals a memory: stages the original + locked thumb on disk, queues, drains.
+    /// Videos are first-class — the locked thumb comes from the opening frame.
     /// Returns the locked thumbnail for immediate UI feedback.
     @discardableResult
-    func enqueue(imageData: Data, vaultId: String, capturedAt: Date, mediaType: MediaType = .photo) -> UIImage? {
-        guard let image = UIImage(data: imageData),
-              let locked = CollectingView.lockedThumbnail(from: image),
-              let lockedData = locked.jpegData(compressionQuality: 0.7) else { return nil }
-
+    func enqueue(data: Data, vaultId: String, capturedAt: Date, mediaType: MediaType,
+                 fileExtension: String? = nil) -> UIImage? {
         let id = UUID().uuidString
-        let originalName = "sealed-\(id).jpg"
+        // AVFoundation trusts the extension — preserve the real container type.
+        let ext = fileExtension ?? (mediaType == .video ? "mov" : "jpg")
+        let originalName = "sealed-\(id).\(ext)"
         let thumbName = "thumb-\(id).jpg"
-        do {
-            try LocalStore.save(data: imageData, fileName: originalName)
-            try LocalStore.save(data: lockedData, fileName: thumbName)
-        } catch {
+
+        // Stage the original first (videos need a file URL for frame extraction).
+        guard let originalURL = try? LocalStore.save(data: data, fileName: originalName) else { return nil }
+
+        let source: UIImage?
+        switch mediaType {
+        case .photo: source = UIImage(data: data)
+        case .video: source = MediaPoster.firstFrame(of: originalURL)
+        }
+        guard let source,
+              let locked = CollectingView.lockedThumbnail(from: source),
+              let lockedData = locked.jpegData(compressionQuality: 0.7),
+              (try? LocalStore.save(data: lockedData, fileName: thumbName)) != nil else {
+            try? FileManager.default.removeItem(at: originalURL)
             return nil
         }
 
@@ -100,7 +110,7 @@ final class UploadQueue {
             id: id, vaultId: vaultId,
             originalFileName: originalName, lockedThumbFileName: thumbName,
             mediaType: mediaType, capturedAt: capturedAt, enqueuedAt: .now,
-            byteSize: Int64(imageData.count))
+            byteSize: Int64(data.count))
         pending.append(item)
         persist()
         drain()

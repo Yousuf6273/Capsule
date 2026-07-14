@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 
 /// Screen 4 — the journey. Chronological replay: cinematic chapter cards
@@ -95,7 +96,12 @@ struct JourneyView: View {
 
     private func photoSlide(_ memory: Memory) -> some View {
         ZStack(alignment: .bottom) {
-            if let image = model.memoryStore.image(for: memory) {
+            if let videoURL = model.memoryStore.videoURL(for: memory) {
+                LoopingVideoSlide(url: videoURL)
+                    .saturation(developed ? 1.0 : 0.4)
+                    .brightness(developed ? 0 : -0.2)
+                    .ignoresSafeArea()
+            } else if let image = model.memoryStore.image(for: memory) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -141,8 +147,10 @@ struct JourneyView: View {
     // ── Sequencing ───────────────────────────────────────────────
 
     private var currentDuration: Double {
-        if case .chapter = items[index] { return 2.4 }
-        return 4.0
+        switch items[index] {
+        case .chapter: return 2.4
+        case .photo(let memory): return memory.mediaType == .video ? 6.5 : 4.0
+        }
     }
 
     private func play() {
@@ -178,6 +186,41 @@ struct JourneyView: View {
                 index = next
                 play()
             }
+        }
+    }
+}
+
+/// Full-bleed, muted, looping video for a journey slide — the memory plays
+/// itself while the ceremony keeps control of pacing.
+struct LoopingVideoSlide: View {
+    let url: URL
+    @State private var player: AVQueuePlayer?
+    @State private var looper: AVPlayerLooper?
+
+    var body: some View {
+        GeometryReader { geo in
+            if let player {
+                VideoPlayer(player: player)
+                    .disabled(true) // no scrubber during the ceremony
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+            } else {
+                Color.black
+            }
+        }
+        .onAppear {
+            let item = AVPlayerItem(url: url)
+            let queue = AVQueuePlayer(playerItem: item)
+            queue.isMuted = true
+            looper = AVPlayerLooper(player: queue, templateItem: item)
+            queue.play()
+            player = queue
+        }
+        .onDisappear {
+            player?.pause()
+            looper = nil
+            player = nil
         }
     }
 }

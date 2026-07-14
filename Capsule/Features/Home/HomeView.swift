@@ -19,32 +19,39 @@ struct HomeView: View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(greeting)
-                        .font(CapsuleFont.mono(12, .semibold))
-                        .foregroundStyle(Color.capsuleDim)
-                        .padding(.top, 8)
+                    Text(greeting.uppercased())
+                        .monoLabel(size: 10.5, color: Color(hex: "F4D796").opacity(0.85), tracking: 2.2)
+                        .padding(.top, 14)
+                        .floatIn(delay: 0)
 
                     Text("Your Vaults")
                         .font(CapsuleFont.display(38, .extraBold))
                         .foregroundStyle(Color.capsuleCream)
-                        .padding(.top, 2)
+                        .padding(.top, 6)
+                        .floatIn(delay: 0.06)
 
                     if let hero = model.heroVault {
                         NavigationLink(value: hero) {
                             HeroVaultCard(vault: hero)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.top, 18)
+                        .buttonStyle(PressableCardStyle())
+                        .accessibilityIdentifier("heroCard")
+                        .padding(.top, 20)
+                        .floatIn(delay: 0.14)
                     }
 
                     if !model.fillingUp.isEmpty {
-                        sectionHeader("Filling up", count: model.fillingUp.count)
+                        sectionHeader("Still filling up", count: model.fillingUp.count)
+                            .floatIn(delay: 0.24)
                         vaultRow(model.fillingUp, locked: true)
+                            .floatIn(delay: 0.3)
                     }
 
                     if !model.readyToRelive.isEmpty {
                         sectionHeader("✨ Ready to relive", count: model.readyToRelive.count)
+                            .floatIn(delay: 0.34)
                         vaultRow(model.readyToRelive, locked: false)
+                            .floatIn(delay: 0.4)
                     }
 
                     if model.vaults.isEmpty {
@@ -63,19 +70,21 @@ struct HomeView: View {
                 .padding(.bottom, 130)
             }
 
-            // FAB
+            // FAB — champagne, like the unseal button
             Button(action: onCreate) {
                 Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Color(hex: "17141C"))
                     .frame(width: 58, height: 58)
-                    .background(TripTheme.default.fabGradient, in: Circle())
-                    .shadow(color: Color.poolPurple.opacity(0.58), radius: 15, y: 7)
+                    .background(
+                        LinearGradient(colors: [Color(hex: "F4D796"), Color(hex: "D9B26A")],
+                                       startPoint: .top, endPoint: .bottom),
+                        in: Circle())
+                    .shadow(color: Color(hex: "D9B26A").opacity(0.45), radius: 18, y: 8)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableCardStyle())
             .padding(.trailing, 20)
-            .padding(.bottom, 92)
+            .padding(.bottom, 96)
         }
     }
 
@@ -100,7 +109,7 @@ struct HomeView: View {
                     NavigationLink(value: vault) {
                         MiniVaultCard(vault: vault, locked: locked)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableCardStyle())
                 }
             }
             .padding(.horizontal, 18)

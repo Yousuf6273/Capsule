@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 
 /// The permanent album: 2-column grid grouped by trip day, kept forever.
@@ -49,7 +50,11 @@ struct AlbumView: View {
                                             GridItem(.flexible(), spacing: 10)], spacing: 10) {
                             ForEach(group.items) { memory in
                                 albumCell(memory)
+                                    .contentShape(Rectangle())
                                     .onTapGesture { selected = memory }
+                                    .accessibilityElement(children: .combine)
+                                    .accessibilityAddTraits(.isButton)
+                                    .accessibilityIdentifier("albumCell")
                             }
                         }
                     }
@@ -61,7 +66,9 @@ struct AlbumView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 GlassIconButton(systemName: "gamecontroller.fill") { showQuiz = true }
+                    .accessibilityIdentifier("openQuiz")
                 GlassIconButton(systemName: "sparkles") { showWrapped = true }
+                    .accessibilityIdentifier("openWrapped")
             }
         }
         .sheet(item: $selected) { memory in
@@ -88,11 +95,18 @@ struct AlbumView: View {
             }
             LinearGradient(colors: [.clear, Color(hex: "05070C").opacity(0.85)],
                            startPoint: .center, endPoint: .bottom)
-            Text(contributorName(memory).uppercased())
-                .font(CapsuleFont.mono(9.5, .semibold))
-                .tracking(0.8)
-                .foregroundStyle(Color.capsuleCream)
-                .padding(10)
+            HStack(spacing: 5) {
+                if memory.mediaType == .video {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Color(hex: "F4D796"))
+                }
+                Text(contributorName(memory).uppercased())
+                    .font(CapsuleFont.mono(9.5, .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(Color.capsuleCream)
+            }
+            .padding(10)
         }
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -114,10 +128,21 @@ struct MemoryDetailView: View {
     let vault: Vault
     let memory: Memory
 
+    @State private var player: AVPlayer?
+
     var body: some View {
         ZStack(alignment: .bottom) {
             Color(hex: "05070C").ignoresSafeArea()
-            if let image = model.memoryStore.image(for: memory) {
+            if let videoURL = model.memoryStore.videoURL(for: memory) {
+                VideoPlayer(player: player)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        let p = AVPlayer(url: videoURL)
+                        player = p
+                        p.play()
+                    }
+                    .onDisappear { player?.pause(); player = nil }
+            } else if let image = model.memoryStore.image(for: memory) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
@@ -138,6 +163,7 @@ struct MemoryDetailView: View {
         }
         .overlay(alignment: .topTrailing) {
             GlassIconButton(systemName: "xmark") { dismiss() }
+                .accessibilityIdentifier("closeDetail")
                 .padding(16)
         }
     }

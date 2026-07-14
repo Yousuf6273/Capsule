@@ -2,7 +2,23 @@ import SwiftUI
 
 @main
 struct CapsuleApp: App {
-    @State private var model = AppModel()
+    @State private var model: AppModel
+
+    init() {
+        #if DEBUG
+        // Deterministic state for UI tests: wipe persistence before AppModel loads.
+        if CommandLine.arguments.contains("--uitest-reset") {
+            if let bundleId = Bundle.main.bundleIdentifier {
+                UserDefaults.standard.removePersistentDomain(forName: bundleId)
+            }
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            for name in ["media", "memories.json", "uploadQueue.json"] {
+                try? FileManager.default.removeItem(at: docs.appendingPathComponent(name))
+            }
+        }
+        #endif
+        _model = State(initialValue: AppModel())
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -20,9 +36,9 @@ struct RootView: View {
         Group {
             if model.isRestoringSession {
                 ZStack {
-                    ThemedMeshBackground()
+                    ShellBackground(showDust: false)
                     Text("CAPSULE")
-                        .monoLabel(size: 12, color: .capsuleCream, tracking: 4)
+                        .monoLabel(size: 12, color: Color(hex: "F4D796"), tracking: 4)
                 }
             } else if model.isSignedIn {
                 MainShell()

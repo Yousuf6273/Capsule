@@ -14,7 +14,7 @@ struct JoinVaultView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ThemedMeshBackground()
+                ShellBackground()
 
                 VStack(spacing: 18) {
                     Text("🎟")

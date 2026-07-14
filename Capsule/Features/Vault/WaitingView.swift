@@ -76,6 +76,7 @@ struct WaitingView: View {
                     }
                     .font(CapsuleFont.body(12.5, .semibold))
                     .foregroundStyle(Color.capsuleDim)
+                    .accessibilityIdentifier("simulateUnlock")
                     #endif
                 }
                 .padding(.horizontal, 20)

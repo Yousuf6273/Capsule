@@ -17,7 +17,7 @@ struct MainShell: View {
     var body: some View {
         NavigationStack(path: $path) {
             ZStack(alignment: .bottom) {
-                ThemedMeshBackground()
+                ShellBackground()
 
                 Group {
                     switch tab {
@@ -25,7 +25,9 @@ struct MainShell: View {
                         HomeView(onCreate: { showCreate = true },
                                  onJoin: { showJoin = true })
                     case .wrapped:
-                        WrappedListView()
+                        WrappedListView { vault in
+                            path.append(vault)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -35,6 +37,11 @@ struct MainShell: View {
             .navigationDestination(for: Vault.self) { vault in
                 VaultRouter(vaultId: vault.id)
             }
+            #if DEBUG
+            .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { value in
+                print("[tapcal] \(Int(value.location.x)),\(Int(value.location.y))")
+            })
+            #endif
             .sheet(isPresented: $showCreate) {
                 CreateVaultView { newVault in
                     showCreate = false
@@ -60,31 +67,32 @@ struct MainShell: View {
         }
     }
 
+    /// Floating glass pill — quiet, jewel-like, never a toolbar.
     private var bottomBar: some View {
-        HStack {
+        HStack(spacing: 38) {
             navItem(icon: "shippingbox.fill", label: "Vaults", active: tab == .vaults) { tab = .vaults }
-            Spacer()
+                .accessibilityIdentifier("tabVaults")
             navItem(icon: "plus", label: "New", active: false) { showCreate = true }
-            Spacer()
-            navItem(icon: "sparkles.rectangle.stack.fill", label: "Wrapped", active: tab == .wrapped) { tab = .wrapped }
+                .accessibilityIdentifier("tabNew")
+            navItem(icon: "sparkles", label: "Wrapped", active: tab == .wrapped) { tab = .wrapped }
+                .accessibilityIdentifier("tabWrapped")
         }
-        .padding(.horizontal, 48)
-        .padding(.top, 12)
-        .padding(.bottom, 6)
-        .background(alignment: .top) {
-            Rectangle().fill(Color.capsuleGlassBorder).frame(height: 1)
-        }
-        .background(.ultraThinMaterial)
-        .background(Color.black.opacity(0.14))
+        .padding(.horizontal, 34)
+        .padding(.vertical, 13)
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(Color(hex: "17141C").opacity(0.5), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+        .shadow(color: .black.opacity(0.45), radius: 24, y: 10)
+        .padding(.bottom, 12)
     }
 
     private func navItem(icon: String, label: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 17, weight: .semibold))
-                Text(label).monoLabel(size: 9, color: active ? .poolGold : .capsuleDim, tracking: 0.8)
+                Image(systemName: icon).font(.system(size: 16, weight: .semibold))
+                Text(label).monoLabel(size: 8.5, color: active ? Color(hex: "F4D796") : .capsuleDim2, tracking: 1)
             }
-            .foregroundStyle(active ? Color.poolGold : Color.capsuleDim)
+            .foregroundStyle(active ? Color(hex: "F4D796") : Color.capsuleDim)
         }
         .buttonStyle(.plain)
     }
@@ -93,6 +101,7 @@ struct MainShell: View {
 /// "Wrapped" tab: opened vaults you can relive any time.
 struct WrappedListView: View {
     @Environment(AppModel.self) private var model
+    var onOpen: (Vault) -> Void = { _ in }
 
     var body: some View {
         ScrollView {
@@ -109,7 +118,7 @@ struct WrappedListView: View {
                         .padding(.top, 8)
                 } else {
                     ForEach(model.readyToRelive) { vault in
-                        NavigationLink(value: vault) {
+                        Button { onOpen(vault) } label: {
                             HStack(spacing: 12) {
                                 CoverArt(vault: vault)
                                     .frame(width: 56, height: 56)

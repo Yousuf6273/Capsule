@@ -1,4 +1,28 @@
+import AVFoundation
 import SwiftUI
+
+/// Poster frames for videos — extracted once, cached.
+enum MediaPoster {
+    private static let cache = NSCache<NSString, UIImage>()
+
+    static func firstFrame(of url: URL) -> UIImage? {
+        let key = url.lastPathComponent as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 1200, height: 1200)
+        // Sample slightly in so we skip black lead-in frames.
+        let time = CMTime(seconds: 0.4, preferredTimescale: 600)
+        var cgImage = try? generator.copyCGImage(at: time, actualTime: nil)
+        if cgImage == nil {
+            cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil)
+        }
+        guard let cg = cgImage else { return nil }
+        let image = UIImage(cgImage: cg)
+        cache.setObject(image, forKey: key)
+        return image
+    }
+}
 
 /// Persistent store of memory records (disk-backed JSON in the mock stack;
 /// replaced by Firestore in the live stack). Placeholder art stands in for
@@ -34,12 +58,26 @@ final class MemoryStore {
         memories(for: vaultId).filter { $0.uploaderId == userId }
     }
 
-    /// Original media — only call on unlocked vaults; sealed UI uses lockedThumb.
+    /// Original media (poster frame for videos) — only call on unlocked
+    /// vaults; sealed UI uses lockedThumb.
     func image(for memory: Memory) -> UIImage? {
-        if let name = memory.mediaFileName, let img = LocalStore.image(named: name) {
-            return img
+        if let name = memory.mediaFileName {
+            if memory.mediaType == .video {
+                if let poster = MediaPoster.firstFrame(of: LocalStore.url(for: name)) {
+                    return poster
+                }
+            } else if let img = LocalStore.image(named: name) {
+                return img
+            }
         }
         return PlaceholderArt.image(seed: memory.id, size: CGSize(width: 500, height: 900))
+    }
+
+    /// Playable URL for an unlocked video memory.
+    func videoURL(for memory: Memory) -> URL? {
+        guard memory.mediaType == .video, let name = memory.mediaFileName else { return nil }
+        let url = LocalStore.url(for: name)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     func lockedThumb(for memory: Memory) -> UIImage? {

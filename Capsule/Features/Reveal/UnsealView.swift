@@ -39,7 +39,7 @@ struct UnsealView: View {
             .animation(.easeOut(duration: 1.1), value: lightBloom)
             .ignoresSafeArea()
 
-            ParticleField(active: isUnsealing, tint: gold)
+            GoldenDust(active: isUnsealing, tint: gold)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
 
@@ -76,6 +76,7 @@ struct UnsealView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isUnsealing)
+                .accessibilityIdentifier("unsealButton")
                 .padding(.bottom, 70)
             }
             .opacity(contentFade ? 0 : 1)
@@ -147,39 +148,3 @@ private struct VaultRing: View {
     }
 }
 
-/// Slow-drifting golden dust, bursting upward on unseal.
-private struct ParticleField: View {
-    let active: Bool
-    let tint: Color
-
-    private struct Particle {
-        let x: Double, size: Double, speed: Double, phase: Double, alpha: Double
-    }
-
-    private let particles: [Particle] = {
-        var rng = SeededRandom(seed: "unseal-dust")
-        return (0..<38).map { _ in
-            Particle(x: rng.next(), size: 1.5 + rng.next() * 3,
-                     speed: 0.35 + rng.next() * 0.8,
-                     phase: rng.next(), alpha: 0.25 + rng.next() * 0.5)
-        }
-    }()
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { context in
-            Canvas { canvas, size in
-                let t = context.date.timeIntervalSinceReferenceDate
-                let boost: Double = active ? 5 : 1
-                for p in particles {
-                    let progress = ((t * p.speed * boost / 14) + p.phase).truncatingRemainder(dividingBy: 1)
-                    let y = size.height * (1.05 - progress * 1.1)
-                    let wobble = sin(t * 0.8 + p.phase * 6.28) * 14
-                    let rect = CGRect(x: p.x * size.width + wobble, y: y,
-                                      width: p.size, height: p.size)
-                    canvas.fill(Ellipse().path(in: rect),
-                                with: .color(tint.opacity(p.alpha * (active ? 1 : 0.55))))
-                }
-            }
-        }
-    }
-}

@@ -45,7 +45,7 @@ struct QuizView: View {
                 .font(CapsuleFont.display(28, .extraBold))
                 .foregroundStyle(Color.capsuleCream)
                 .multilineTextAlignment(.center)
-            Text("\(vault.members.count) players · \(5) quick rounds · phones out")
+            Text("5 quick rounds · fastest guess wins bonus points")
                 .font(CapsuleFont.body(13, .semibold))
                 .foregroundStyle(Color.capsuleDim)
 
@@ -56,7 +56,7 @@ struct QuizView: View {
             .padding(.horizontal, 60)
             .padding(.top, 14)
 
-            Button("Skip to the wrapped") { onFinished() }
+            Button("Maybe later") { onFinished() }
                 .font(CapsuleFont.body(12.5, .semibold))
                 .foregroundStyle(Color.capsuleDim)
                 .padding(.top, 2)
@@ -82,9 +82,9 @@ struct QuizRoundView: View {
                 Text("ROUND \(engine.roundIndex + 1)/\(engine.rounds.count)")
                     .monoLabel(size: 10, color: theme.secondary, tracking: 1.5)
                 Spacer()
-                Text("\(engine.guesses.count)/\(engine.vault.members.count) in")
-                    .font(CapsuleFont.mono(11, .semibold))
-                    .foregroundStyle(Color.capsuleDim)
+                Text("SCORE \(engine.myScore)")
+                    .font(CapsuleFont.mono(11, .bold))
+                    .foregroundStyle(Color(hex: "F4D796"))
                     .contentTransition(.numericText())
             }
             .padding(.horizontal, 22)
@@ -126,10 +126,6 @@ struct QuizRoundView: View {
                 .padding(.horizontal, 22)
                 .padding(.bottom, 26)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else if engine.myGuessOptionId != nil {
-                Text("Waiting for the room…")
-                    .monoLabel(size: 10.5, color: .capsuleDim, tracking: 1.2)
-                    .padding(.bottom, 34)
             }
         }
         .sensoryFeedback(.success, trigger: celebrate)
@@ -208,6 +204,7 @@ struct QuizRoundView: View {
             .scaleEffect(isCorrect && revealing ? 1.04 : 1)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("quizOption")
         .disabled(engine.myGuessOptionId != nil)
         .animation(.spring(duration: 0.4), value: revealing)
     }
@@ -223,10 +220,10 @@ struct QuizResultsView: View {
     var body: some View {
         VStack(spacing: 0) {
             Text("🏆").font(.system(size: 46)).padding(.top, 40)
-            Text("Round over")
+            Text("Quiz complete")
                 .monoLabel(size: 11, color: theme.secondary, tracking: 2)
                 .padding(.top, 8)
-            Text("Trip knowledge scores")
+            Text("How you stacked up")
                 .font(CapsuleFont.display(22, .extraBold))
                 .foregroundStyle(Color.capsuleCream)
                 .padding(.top, 6)
@@ -263,7 +260,7 @@ struct QuizResultsView: View {
 
             Spacer()
 
-            Button("On to the wrapped ✨") { onDone() }
+            Button("Back to the album") { onDone() }
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.horizontal, 22)
                 .padding(.bottom, 26)

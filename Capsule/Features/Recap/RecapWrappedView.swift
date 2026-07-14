@@ -84,7 +84,7 @@ struct RecapWrappedView: View {
                                                 in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
                         }
-                        Button("Open the album") { onDone() }
+                        Button("Back to the album") { onDone() }
                             .buttonStyle(GlassButtonStyle())
                     }
                     .padding(.top, 18)

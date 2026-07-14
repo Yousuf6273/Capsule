@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 
 /// Collecting screen: full-bleed cover header, "memory sealed" toast on upload,
 /// locked/obscured grid of your own drops, member strip. Uploads go through the
@@ -7,6 +8,7 @@ import PhotosUI
 struct CollectingView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.tripTheme) private var theme
+    @Environment(\.dismiss) private var dismiss
     let vault: Vault
 
     @State private var pickerItems: [PhotosPickerItem] = []
@@ -27,8 +29,10 @@ struct CollectingView: View {
 
     var body: some View {
         ZStack {
-            Color.capsuleCharcoal2.ignoresSafeArea()
-            ThemedMeshBackground().opacity(0.35)
+            Color(hex: "121016").ignoresSafeArea()
+            RadialGradient(colors: [theme.primary.opacity(0.22), .clear],
+                           center: .init(x: 0.8, y: 0.75), startRadius: 0, endRadius: 480)
+                .ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -53,22 +57,15 @@ struct CollectingView: View {
 
                         lockedGrid
 
-                        NavigationLink(value: "waiting-\(vault.id)") {
-                            Text("Done adding for now")
-                        }
-                        .buttonStyle(GlassButtonStyle())
-                        .padding(.top, 8)
+                        Button("Done for now") { dismiss() }
+                            .buttonStyle(GlassButtonStyle())
+                            .padding(.top, 8)
                     }
                     .padding(18)
                 }
                 .padding(.bottom, 40)
             }
             .ignoresSafeArea(edges: .top)
-        }
-        .navigationDestination(for: String.self) { key in
-            if key == "waiting-\(vault.id)" {
-                WaitingView(vault: vault).tripTheme(vault.theme)
-            }
         }
         .onChange(of: pickerItems) { _, items in
             ingest(items)
@@ -155,7 +152,8 @@ struct CollectingView: View {
                 lockedCell(LocalStore.image(named: item.lockedThumbFileName), pending: true)
             }
 
-            PhotosPicker(selection: $pickerItems, maxSelectionCount: 10, matching: .images) {
+            PhotosPicker(selection: $pickerItems, maxSelectionCount: 10,
+                         matching: .any(of: [.videos, .images])) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(Color.white.opacity(0.04))
@@ -195,8 +193,12 @@ struct CollectingView: View {
         Task {
             for item in items {
                 guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+                let videoType = item.supportedContentTypes.first { $0.conforms(to: .movie) }
+                let ext = videoType?.preferredFilenameExtension
                 withAnimation(.spring(duration: 0.45)) {
-                    model.uploadQueue.enqueue(imageData: data, vaultId: vault.id, capturedAt: .now)
+                    model.uploadQueue.enqueue(data: data, vaultId: vault.id, capturedAt: .now,
+                                              mediaType: videoType != nil ? .video : .photo,
+                                              fileExtension: ext)
                 }
                 withAnimation(.spring(duration: 0.3)) { toastPulse = true }
                 try? await Task.sleep(for: .milliseconds(350))

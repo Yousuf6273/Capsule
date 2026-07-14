@@ -1,8 +1,8 @@
 # Capsule
 
-Friends seal trip photos/videos into a locked vault. **Nobody — including the uploader — can view content until the unlock condition is met.** Then everyone experiences the reveal together.
+Friends seal trip **videos and photos** into a locked vault — the "do not open until the trip ends" group, productised. **Nobody — including the uploader — can view content until the unlock condition is met.** Then everyone experiences the Trip Replay together: unseal → intro card → Trip by the Numbers → the Journey → finale → gallery.
 
-Design source of truth: the HTML click-through mockup (`~/Downloads/mockup.html`).
+Design language: deep charcoal, rich purple breath, champagne gold, drifting golden dust. Every screen is a chapter, not a dashboard — Spotify Wrapped × Apple Journal × a keepsake.
 
 ## Running
 
@@ -42,7 +42,13 @@ Then add the Firebase iOS SDK via SPM, drop `GoogleService-Info.plist` into `Cap
 8. ✅ Wrapped screen + shareable card (`ImageRenderer` → `ShareLink`)
 9. ✅ Permanent day-grouped album + memory detail
 
-**Demo path in the simulator:** sign in → tap the Kefalonia hero → "Skip ahead — simulate unlock ✨" (DEBUG-only button) → doors → teaser → slideshow → quiz → wrapped → album.
+### Beyond the original milestones
+
+- **Trip Replay** (replaces doors/teaser/slideshow): `UnsealView` (tap-to-unseal vault dial, golden bloom, dust burst) → `IntroCardView` (blurred hero + glass title card) → `NumbersView` (5-8 dynamically-scored stat slides with eased count-ups) → `JourneyView` (chapter cards + highlights, ken-burns photos, **looping muted video slides**) → `FinaleView` ("Until the next adventure.") → gallery. Quiz + wrapped live in the gallery toolbar. A quiet ✕ appears after 4s to skip the ceremony.
+- **Video-first pipeline**: picker accepts videos, `UploadQueue` stages originals with their true container extension and derives locked thumbs from the opening frame (`MediaPoster`), `MemoryStore` serves poster frames + playable URLs, album cells carry a play badge, detail view plays with sound.
+- **App-wide atmosphere**: `ShellBackground` (charcoal + purple/gold/coral glows + `GoldenDust`), `FloatIn` staggered entrances, `PressableCardStyle` spring presses, `GoldButtonStyle` champagne CTAs, floating glass nav pill, staged auth entrance.
+
+**Demo path in the simulator:** sign in → tap the Kefalonia hero → "Skip ahead — simulate unlock ✨" (DEBUG-only button) → Tap to Unseal → intro → numbers → journey → finale → gallery.
 
 ### Going live (the remaining backend step)
 

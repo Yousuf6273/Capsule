@@ -17,7 +17,7 @@ struct HeroVaultCard: View {
                 startPoint: .top, endPoint: .bottom)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("Your next reveal")
+                Text(vault.state == .unlocked ? "The vault is open" : "Your next reveal")
                     .monoLabel(size: 10.5, color: .poolGold, tracking: 1.3)
 
                 Text(vault.displayName)
@@ -26,7 +26,8 @@ struct HeroVaultCard: View {
                     .padding(.top, 6)
 
                 HStack(spacing: 14) {
-                    metaItem("lock.fill", "Memories locked")
+                    metaItem(vault.state == .unlocked ? "lock.open.fill" : "lock.fill",
+                             vault.state == .unlocked ? "Ready to relive" : "Memories locked")
                     metaItem("person.2.fill", "\(vault.members.count) friends")
                     metaItem(nil, "\(vault.memoryCount) memories")
                 }

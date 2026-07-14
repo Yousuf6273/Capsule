@@ -29,8 +29,11 @@ struct CreateVaultView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ThemedMeshBackground()
-                    .tripTheme(extractedTheme)
+                ShellBackground()
+                RadialGradient(colors: [extractedTheme.primary.opacity(0.25), .clear],
+                               center: .init(x: 0.5, y: 0.1), startRadius: 0, endRadius: 460)
+                    .ignoresSafeArea()
+                    .animation(.easeInOut(duration: 1.2), value: extractedTheme)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {

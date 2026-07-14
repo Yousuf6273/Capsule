@@ -32,37 +32,6 @@ struct QuizGuess: Equatable {
     let elapsed: Double
 }
 
-protocol QuizTransporting {
-    /// Streams friends' guesses for one round.
-    func friendGuesses(round: QuizRound, friends: [Member]) -> AsyncStream<QuizGuess>
-}
-
-/// Simulated friends: everyone answers within ~1-4s, mostly correctly-ish.
-struct MockQuizTransport: QuizTransporting {
-    func friendGuesses(round: QuizRound, friends: [Member]) -> AsyncStream<QuizGuess> {
-        AsyncStream { continuation in
-            let task = Task {
-                var rng = SeededRandom(seed: round.id)
-                for friend in friends {
-                    let delay = 0.9 + rng.next() * 3.0
-                    try? await Task.sleep(for: .seconds(delay))
-                    guard !Task.isCancelled else { break }
-                    // 55% chance of the right answer when one exists.
-                    let optionId: String
-                    if let correct = round.correctOptionId, rng.next() < 0.55 {
-                        optionId = correct
-                    } else {
-                        optionId = round.options[Int(rng.next() * Double(round.options.count - 1) + 0.5)].id
-                    }
-                    continuation.yield(QuizGuess(memberId: friend.id, optionId: optionId, elapsed: delay))
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
-    }
-}
-
 @MainActor
 @Observable
 final class QuizEngine {
@@ -74,35 +43,49 @@ final class QuizEngine {
 
     var roundIndex = 0
     var roundState: RoundState = .answering
-    var guesses: [String: QuizGuess] = [:]      // memberId → guess (current round)
+    var guesses: [String: QuizGuess] = [:]      // memberId → recorded answer (current round)
     var scores: [String: Int] = [:]             // memberId → points
     var myGuessOptionId: String?
     var isFinished = false
 
-    private let transport: QuizTransporting
-    private var streamTask: Task<Void, Never>?
     private var roundStart = Date.now
 
     var currentRound: QuizRound { rounds[roundIndex] }
     var friends: [Member] { vault.members.filter { !$0.isCurrentUser } }
 
-    init(vault: Vault, memories: [Memory], stats: RecapStats, currentUserId: String,
-         transport: QuizTransporting = MockQuizTransport()) {
+    var myScore: Int { scores[currentUserId] ?? 0 }
+
+    init(vault: Vault, memories: [Memory], stats: RecapStats, currentUserId: String) {
         self.vault = vault
         self.currentUserId = currentUserId
-        self.transport = transport
         self.rounds = Self.buildRounds(vault: vault, memories: memories,
                                        stats: stats, currentUserId: currentUserId)
         for member in vault.members { scores[member.id] = 0 }
         startRound()
     }
 
+    /// Solo play: you answer, the reveal is immediate. Friends' answers are
+    /// deterministic recorded guesses shown alongside yours — no waiting.
     func submitGuess(optionId: String) {
         guard roundState == .answering, myGuessOptionId == nil else { return }
         myGuessOptionId = optionId
         let elapsed = Date.now.timeIntervalSince(roundStart)
         guesses[currentUserId] = QuizGuess(memberId: currentUserId, optionId: optionId, elapsed: elapsed)
-        maybeReveal()
+
+        var rng = SeededRandom(seed: currentRound.id + "-recorded")
+        for friend in friends {
+            let friendOption: String
+            if let correct = currentRound.correctOptionId, rng.next() < 0.55 {
+                friendOption = correct
+            } else {
+                friendOption = currentRound.options[Int(rng.next() * Double(currentRound.options.count - 1) + 0.5)].id
+            }
+            guesses[friend.id] = QuizGuess(memberId: friend.id, optionId: friendOption,
+                                           elapsed: 1 + rng.next() * 3)
+        }
+
+        withAnimation(.spring(duration: 0.5)) { roundState = .revealing }
+        scoreRound()
     }
 
     func advance() {
@@ -128,26 +111,6 @@ final class QuizEngine {
         guesses = [:]
         myGuessOptionId = nil
         roundStart = .now
-        streamTask?.cancel()
-        let round = currentRound
-        streamTask = Task { [weak self] in
-            guard let self else { return }
-            for await guess in transport.friendGuesses(round: round, friends: friends) {
-                guard !Task.isCancelled, self.currentRound.id == round.id else { break }
-                self.guesses[guess.memberId] = guess
-                self.maybeReveal()
-            }
-            // Everyone answered (or stream ended) — reveal even if user is slow? No:
-            // wait for the user; friends finishing just updates the "N in" count.
-        }
-    }
-
-    /// Reveal once every member (including you) has guessed.
-    private func maybeReveal() {
-        guard roundState == .answering,
-              guesses.count >= vault.members.count else { return }
-        withAnimation(.spring(duration: 0.5)) { roundState = .revealing }
-        scoreRound()
     }
 
     private func scoreRound() {

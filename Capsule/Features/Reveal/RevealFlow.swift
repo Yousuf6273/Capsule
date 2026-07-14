@@ -39,10 +39,11 @@ final class TripReplayCoordinator {
 struct RevealFlowView: View {
     @Environment(AppModel.self) private var model
     @State private var coordinator: TripReplayCoordinator?
+    @State private var showSkip = false
     let vault: Vault
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topTrailing) {
             Color.capsuleCharcoal3.ignoresSafeArea()
 
             if let coordinator {
@@ -61,6 +62,24 @@ struct RevealFlowView: View {
                     }
                 }
             }
+
+            // Quiet escape hatch — appears after a beat, never steals the show.
+            if showSkip, coordinator?.phase != .finale {
+                Button {
+                    model.markRevealCompleted(vaultId: vault.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.capsuleCream.opacity(0.55))
+                        .frame(width: 34, height: 34)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("skipReveal")
+                .padding(.top, 58)
+                .padding(.trailing, 18)
+                .transition(.opacity)
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .statusBarHidden()
@@ -71,6 +90,10 @@ struct RevealFlowView: View {
                     memories: model.memoryStore.memories(for: vault.id),
                     currentUserId: model.profile?.id ?? "")
             }
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(4))
+            withAnimation(.easeIn(duration: 0.6)) { showSkip = true }
         }
     }
 }
@@ -130,17 +153,22 @@ enum JourneyBuilder {
         return items
     }
 
-    /// Spread picks across the day, preferring captioned photos.
+    /// Spread picks across the day. Videos are the emotional core of a vault,
+    /// so they win a slot first; captioned photos next; then chronology.
     private static func highlights(from photos: [Memory], limit: Int) -> [Memory] {
         guard photos.count > limit else { return photos }
-        let captioned = photos.filter { $0.caption != nil }
         var picks: [Memory] = []
-        picks.append(photos.first!)
-        if let mid = captioned.first(where: { $0.id != photos.first!.id }) ?? photos.dropFirst(photos.count / 2).first {
+        if let video = photos.first(where: { $0.mediaType == .video }) {
+            picks.append(video)
+        }
+        if let first = photos.first, !picks.contains(first) { picks.append(first) }
+        let captioned = photos.filter { $0.caption != nil }
+        if let mid = captioned.first(where: { !picks.contains($0) })
+            ?? photos.dropFirst(photos.count / 2).first(where: { !picks.contains($0) }) {
             picks.append(mid)
         }
         if let last = photos.last, !picks.contains(last) { picks.append(last) }
-        return Array(picks.prefix(limit))
+        return Array(picks.prefix(limit)).sorted { $0.capturedAt < $1.capturedAt }
     }
 
     private static func numberWord(_ n: Int) -> String {
