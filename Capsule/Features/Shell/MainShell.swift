@@ -37,11 +37,6 @@ struct MainShell: View {
             .navigationDestination(for: Vault.self) { vault in
                 VaultRouter(vaultId: vault.id)
             }
-            #if DEBUG
-            .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { value in
-                print("[tapcal] \(Int(value.location.x)),\(Int(value.location.y))")
-            })
-            #endif
             .sheet(isPresented: $showCreate) {
                 CreateVaultView { newVault in
                     showCreate = false
