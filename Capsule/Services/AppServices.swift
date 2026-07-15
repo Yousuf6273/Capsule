@@ -65,6 +65,12 @@ final class AppModel {
         vaults.filter { $0.state == .collecting && $0.id != heroVault?.id }
     }
 
+    /// Sealed vaults waiting on their countdown that aren't the featured hero —
+    /// without this row they'd vanish from Home entirely once sealed.
+    var alsoSealed: [Vault] {
+        vaults.filter { $0.state == .sealed && $0.id != heroVault?.id }
+    }
+
     var readyToRelive: [Vault] {
         vaults.filter { $0.state == .unlocked }
     }
@@ -85,6 +91,17 @@ final class AppModel {
         profile = p
         uploadQueue.uploaderId = p.id
         vaults = (try? await vaultService.loadVaults(for: p.id)) ?? []
+    }
+
+    /// Moves a vault from `.collecting` to `.sealed` — the moment the group
+    /// stops adding and the countdown (or "everyone ready") takes over.
+    @MainActor
+    func sealVault(vaultId: String) {
+        guard let idx = vaults.firstIndex(where: { $0.id == vaultId }),
+              vaults[idx].state == .collecting else { return }
+        vaults[idx].state = .sealed
+        let vault = vaults[idx]
+        Task { try? await vaultService.update(vault: vault) }
     }
 
     // In production only the Cloud Function flips state — this local path

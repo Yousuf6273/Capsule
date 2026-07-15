@@ -43,14 +43,21 @@ struct HomeView: View {
                     if !model.fillingUp.isEmpty {
                         sectionHeader("Still filling up", count: model.fillingUp.count)
                             .floatIn(delay: 0.24)
-                        vaultRow(model.fillingUp, locked: true)
+                        vaultRow(model.fillingUp, status: .collecting)
                             .floatIn(delay: 0.3)
+                    }
+
+                    if !model.alsoSealed.isEmpty {
+                        sectionHeader("🔒 Sealed, waiting", count: model.alsoSealed.count)
+                            .floatIn(delay: 0.28)
+                        vaultRow(model.alsoSealed, status: .sealed)
+                            .floatIn(delay: 0.32)
                     }
 
                     if !model.readyToRelive.isEmpty {
                         sectionHeader("✨ Ready to relive", count: model.readyToRelive.count)
                             .floatIn(delay: 0.34)
-                        vaultRow(model.readyToRelive, locked: false)
+                        vaultRow(model.readyToRelive, status: .unlocked)
                             .floatIn(delay: 0.4)
                     }
 
@@ -102,12 +109,12 @@ struct HomeView: View {
         .padding(.bottom, 12)
     }
 
-    private func vaultRow(_ vaults: [Vault], locked: Bool) -> some View {
+    private func vaultRow(_ vaults: [Vault], status: MiniVaultCard.Status) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(vaults) { vault in
                     NavigationLink(value: vault) {
-                        MiniVaultCard(vault: vault, locked: locked)
+                        MiniVaultCard(vault: vault, status: status)
                     }
                     .buttonStyle(PressableCardStyle())
                 }

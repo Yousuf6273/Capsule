@@ -57,9 +57,12 @@ struct CollectingView: View {
 
                         lockedGrid
 
-                        Button("Done for now") { dismiss() }
-                            .buttonStyle(GlassButtonStyle())
-                            .padding(.top, 8)
+                        Button("Done for now") {
+                            model.sealVault(vaultId: vault.id)
+                            dismiss()
+                        }
+                        .buttonStyle(GlassButtonStyle())
+                        .padding(.top, 8)
                     }
                     .padding(18)
                 }

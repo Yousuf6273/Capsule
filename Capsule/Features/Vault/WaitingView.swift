@@ -7,6 +7,7 @@ struct WaitingView: View {
     let vault: Vault
 
     @State private var isMarkingReady = false
+    @State private var showCelebration = false
 
     private var currentUserReady: Bool {
         vault.members.first(where: \.isCurrentUser)?.isReady ?? false
@@ -41,10 +42,7 @@ struct WaitingView: View {
 
                 if let unlockDate = vault.unlockDate {
                     HugeCountdown(target: unlockDate) {
-                        // In production a Cloud Function flips this the instant
-                        // the clock passes unlockAt. Locally, the client that's
-                        // watching does it — same effect, no server round trip.
-                        model.unlockLocally(vaultId: vault.id)
+                        withAnimation(.easeIn(duration: 0.2)) { showCelebration = true }
                     }
                 } else {
                     Text("when everyone's ready")
@@ -86,6 +84,16 @@ struct WaitingView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
+            }
+
+            if showCelebration {
+                FireworksBurst {
+                    // In production a Cloud Function flips this the instant
+                    // the clock passes unlockAt. Locally, the client that's
+                    // watching does it — same effect, no server round trip.
+                    model.unlockLocally(vaultId: vault.id)
+                }
+                .transition(.opacity)
             }
         }
     }

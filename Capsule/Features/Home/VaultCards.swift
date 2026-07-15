@@ -113,22 +113,41 @@ struct CountdownParts {
 
 /// 132×168 mini card for the horizontal rows.
 struct MiniVaultCard: View {
+    enum Status { case collecting, sealed, unlocked }
+
     let vault: Vault
-    let locked: Bool
+    let status: Status
+
+    private var isDimmed: Bool { status != .unlocked }
 
     private var statusText: String {
-        if locked {
-            let total = vault.members.count
-            return "\(vault.readyCount) of \(total) in"
+        switch status {
+        case .collecting:
+            return "\(vault.readyCount) of \(vault.members.count) in"
+        case .sealed:
+            if let unlockDate = vault.unlockDate {
+                let p = CountdownParts(from: .now, to: unlockDate)
+                return p.days > 0 ? "opens in \(p.days)d \(p.hours)h" : "opens in \(p.hours)h \(p.minutes)m"
+            }
+            return "opens when everyone's ready"
+        case .unlocked:
+            return "\(vault.memoryCount) memories"
         }
-        return "\(vault.memoryCount) memories"
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .collecting: return .poolCoral
+        case .sealed: return Color(hex: "F4D796")
+        case .unlocked: return .poolEmerald
+        }
     }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            CoverArt(vault: vault, dimmed: locked)
-                .blur(radius: locked ? 2.5 : 0)
-                .saturation(locked ? 0.6 : 1)
+            CoverArt(vault: vault, dimmed: isDimmed)
+                .blur(radius: isDimmed ? 2.5 : 0)
+                .saturation(isDimmed ? 0.6 : 1)
 
             LinearGradient(
                 stops: [
@@ -143,7 +162,9 @@ struct MiniVaultCard: View {
                     .foregroundStyle(Color.capsuleCream)
                     .lineLimit(1)
                 Text(statusText)
-                    .monoLabel(size: 9, color: locked ? .poolCoral : .poolEmerald, tracking: 0.5)
+                    .monoLabel(size: 9, color: statusColor, tracking: 0.5)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .padding(12)
         }
@@ -153,7 +174,7 @@ struct MiniVaultCard: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
         .overlay(alignment: .topTrailing) {
-            if locked {
+            if isDimmed {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Color.capsuleCream)

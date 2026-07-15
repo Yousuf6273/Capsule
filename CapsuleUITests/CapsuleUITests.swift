@@ -71,6 +71,15 @@ final class CapsuleUITests: XCTestCase {
                       "collecting screen should show Done for now")
         app.buttons["Done for now"].tap()
         assertOnHome("Done for now must land on Home, not an intermediate step")
+
+        // Regression: "Done for now" must actually seal the vault (move it
+        // out of collecting), not just dismiss the screen — otherwise it sits
+        // in limbo forever with no countdown and no way to ever unlock.
+        let tokyoRow = app.staticTexts["Tokyo"].firstMatch
+        XCTAssertTrue(tokyoRow.waitForExistence(timeout: 6))
+        tokyoRow.tap()
+        XCTAssertFalse(app.buttons["Done for now"].waitForExistence(timeout: 3),
+                       "Tokyo should now be sealed (waiting screen), not still collecting")
     }
 
     /// Sealed vault: hero → waiting screen with countdown → back goes Home.
