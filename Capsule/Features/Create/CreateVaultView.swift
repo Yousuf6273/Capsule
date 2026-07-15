@@ -161,7 +161,8 @@ struct CreateVaultView: View {
             .pickerStyle(.segmented)
 
             if unlockMode == .date {
-                DatePicker("", selection: $unlockDate, in: Date.now..., displayedComponents: .date)
+                DatePicker("", selection: $unlockDate, in: Date.now...,
+                          displayedComponents: [.date, .hourAndMinute])
                     .datePickerStyle(.compact)
                     .labelsHidden()
                     .padding(.horizontal, 15).padding(.vertical, 8)

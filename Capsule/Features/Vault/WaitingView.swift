@@ -40,7 +40,12 @@ struct WaitingView: View {
                     .padding(.bottom, 10)
 
                 if let unlockDate = vault.unlockDate {
-                    HugeCountdown(target: unlockDate)
+                    HugeCountdown(target: unlockDate) {
+                        // In production a Cloud Function flips this the instant
+                        // the clock passes unlockAt. Locally, the client that's
+                        // watching does it — same effect, no server round trip.
+                        model.unlockLocally(vaultId: vault.id)
+                    }
                 } else {
                     Text("when everyone's ready")
                         .font(CapsuleFont.display(24, .extraBold))
@@ -113,8 +118,12 @@ struct WaitingView: View {
 }
 
 /// `.huge-countdown` — Unbounded 52pt days/hours/mins, ticking live.
+/// Fires `onReached` once, the instant the target time passes.
 struct HugeCountdown: View {
     let target: Date
+    var onReached: () -> Void = {}
+
+    @State private var firedAlready = false
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -123,6 +132,11 @@ struct HugeCountdown: View {
                 block(String(format: "%02d", p.days), "days")
                 block(String(format: "%02d", p.hours), "hours")
                 block(String(format: "%02d", p.minutes), "mins")
+            }
+            .onChange(of: p.isPast) { _, isPast in
+                guard isPast, !firedAlready else { return }
+                firedAlready = true
+                onReached()
             }
         }
     }

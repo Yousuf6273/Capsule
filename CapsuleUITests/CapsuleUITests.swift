@@ -212,4 +212,32 @@ final class CapsuleUITests: XCTestCase {
                       || app.staticTexts["Your Vaults"].waitForExistence(timeout: 4),
                       "back from album must land on the shell")
     }
+
+    /// When the countdown reaches zero on its own — no button tap — the vault
+    /// must auto-unlock into the ceremony. Regression test for the bug where
+    /// nothing happened once the timer hit 00:00:00.
+    func testCountdownReachingZeroAutoUnlocks() {
+        // Relaunch with a near-future unlock so the real clock does the work.
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["--uitest-reset"]
+        app.launchEnvironment = ["CAPSULE_TEST_UNLOCK_SECONDS": "12"]
+        app.launch()
+
+        signIn()
+        let hero = app.buttons["heroCard"]
+        XCTAssertTrue(hero.waitForExistence(timeout: 8), "hero card should exist")
+        hero.tap()
+
+        // Waiting screen should appear with a near-zero countdown — and NO tap
+        // on simulateUnlock. Just wait for the clock. (It may have already
+        // flipped by the time we check, which is fine — that's the point.)
+        _ = app.buttons["simulateUnlock"].waitForExistence(timeout: 3)
+
+        // The countdown must, on its own, flip the vault to unlocked and
+        // land on the unseal screen — this is the whole point of the test.
+        let unseal = app.buttons["unsealButton"]
+        XCTAssertTrue(unseal.waitForExistence(timeout: 20),
+                      "vault must auto-unlock into the ceremony when the countdown reaches zero, without any button tap")
+    }
 }

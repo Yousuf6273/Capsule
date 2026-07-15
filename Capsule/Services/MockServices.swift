@@ -130,11 +130,21 @@ final class MockVaultService: VaultServicing {
             }
         }
 
+        // Test hook only: lets UI tests verify the countdown-reaches-zero →
+        // auto-unlock path without waiting 62 real hours.
+        var kefaloniaUnlock = Calendar.current.date(byAdding: .hour, value: 62, to: .now)!
+        #if DEBUG
+        if let secondsArg = ProcessInfo.processInfo.environment["CAPSULE_TEST_UNLOCK_SECONDS"],
+           let seconds = TimeInterval(secondsArg) {
+            kefaloniaUnlock = Date.now.addingTimeInterval(seconds)
+        }
+        #endif
+
         let kefalonia = Vault(
             id: "sample-kefalonia", name: "Kefalonia", emojiFlag: "🇬🇷",
             subtitle: "Kefalonia, July", coverImageFileName: nil,
             state: .sealed,
-            unlockCondition: .date(Calendar.current.date(byAdding: .hour, value: 62, to: .now)!),
+            unlockCondition: .date(kefaloniaUnlock),
             theme: TripTheme(primaryHex: "6B46E0", secondaryHex: "D9B26A"),
             members: [you] + friends(["Maya", "Rhys", "Sana", "Leo", "Ivy", "Tom", "Ana"], readyThrough: 6),
             memoryCount: 438, createdAt: .now.addingTimeInterval(-86400 * 11),
