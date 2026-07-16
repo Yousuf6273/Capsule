@@ -94,14 +94,15 @@ final class AppModel {
         vaults = (try? await vaultService.loadVaults(for: p.id)) ?? []
     }
 
-    /// The mock stand-in for the server's scheduled unlock: any sealed vault
-    /// whose date has passed flips to unlocked. Runs at launch and whenever
-    /// the app returns to the foreground, so an expired vault is never stuck
-    /// waiting for the user to visit its countdown screen.
+    /// The mock stand-in for the server's scheduled unlock: any vault whose
+    /// unlock date has passed flips to unlocked — including ones still in
+    /// `.collecting`, since adding stays open right up to the unlock moment.
+    /// Runs at launch and whenever the app returns to the foreground, so an
+    /// expired vault is never stuck waiting for a screen visit.
     @MainActor
     func unlockExpiredVaults() {
         for idx in vaults.indices {
-            guard vaults[idx].state == .sealed,
+            guard vaults[idx].state != .unlocked,
                   case .date(let unlockDate) = vaults[idx].unlockCondition,
                   unlockDate <= .now else { continue }
             vaults[idx].state = .unlocked

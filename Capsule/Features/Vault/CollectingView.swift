@@ -57,12 +57,11 @@ struct CollectingView: View {
 
                         lockedGrid
 
-                        Button("Done for now") {
-                            model.sealVault(vaultId: vault.id)
-                            dismiss()
-                        }
-                        .buttonStyle(GlassButtonStyle())
-                        .padding(.top, 8)
+                        // Adding stays open until the unlock moment itself —
+                        // "done" just means done for this session.
+                        Button("Done for now") { dismiss() }
+                            .buttonStyle(GlassButtonStyle())
+                            .padding(.top, 8)
                     }
                     .padding(18)
                 }
@@ -95,6 +94,15 @@ struct CollectingView: View {
                 Text("Every drop is sealed — no peeking, not even you.")
                     .font(CapsuleFont.body(12, .medium))
                     .foregroundStyle(Color.capsuleDim)
+
+                // Adding stays open right up to this moment — when it hits
+                // zero, the vault unlocks and the ceremony begins.
+                if let unlockDate = vault.unlockDate {
+                    CountdownChip(target: unlockDate) {
+                        model.unlockExpiredVaults()
+                    }
+                    .padding(.top, 8)
+                }
             }
             .padding(.horizontal, 18)
             .padding(.bottom, 16)

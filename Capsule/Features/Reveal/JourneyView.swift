@@ -51,7 +51,11 @@ struct JourneyView: View {
             if location.x < UIScreen.main.bounds.width * 0.22 { step(-1) } else { step(1) }
         }
         .sensoryFeedback(.impact(weight: .light), trigger: index)
-        .onAppear { play() }
+        .onAppear {
+            // A vault opened with no memories has no journey to play —
+            // move on rather than hanging on an empty black screen.
+            if items.isEmpty { onFinished() } else { play() }
+        }
         .onDisappear { timerTask?.cancel() }
     }
 

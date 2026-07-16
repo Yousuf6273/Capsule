@@ -60,11 +60,16 @@ struct HeroVaultCard: View {
 }
 
 /// Compact live countdown pill (`.hero-countdown`), showing the 2 largest units.
+/// Fires `onReached` once when the target passes (or immediately if it
+/// already has when the chip first appears).
 struct CountdownChip: View {
     let target: Date
+    var onReached: () -> Void = {}
+
+    @State private var firedAlready = false
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
+        TimelineView(.periodic(from: .now, by: 1)) { context in
             let parts = CountdownParts(from: context.date, to: target)
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 unit(parts.primaryValue, parts.primaryLabel)
@@ -76,6 +81,11 @@ struct CountdownChip: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+            .onChange(of: parts.isPast, initial: true) { _, isPast in
+                guard isPast, !firedAlready else { return }
+                firedAlready = true
+                onReached()
+            }
         }
     }
 
