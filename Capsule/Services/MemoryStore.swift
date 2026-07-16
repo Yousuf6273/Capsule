@@ -4,6 +4,17 @@ import SwiftUI
 /// Poster frames for videos — extracted once, cached.
 enum MediaPoster {
     private static let cache = NSCache<NSString, UIImage>()
+    private static var durationCache: [String: Double] = [:]
+
+    /// Video length in seconds, clamped to what a ceremony slide can hold.
+    static func slideDuration(of url: URL) -> Double {
+        let key = url.lastPathComponent
+        if let cached = durationCache[key] { return cached }
+        let seconds = CMTimeGetSeconds(AVURLAsset(url: url).duration)
+        let clamped = seconds.isFinite ? min(max(seconds, 4), 30) : 6.5
+        durationCache[key] = clamped
+        return clamped
+    }
 
     static func firstFrame(of url: URL) -> UIImage? {
         let key = url.lastPathComponent as NSString

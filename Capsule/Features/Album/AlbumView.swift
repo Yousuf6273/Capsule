@@ -10,6 +10,7 @@ struct AlbumView: View {
     @State private var selected: Memory?
     @State private var showWrapped = false
     @State private var showQuiz = false
+    @State private var showReplay = false
 
     private var memories: [Memory] { model.memoryStore.memories(for: vault.id) }
 
@@ -65,6 +66,8 @@ struct AlbumView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                GlassIconButton(systemName: "play.fill") { showReplay = true }
+                    .accessibilityIdentifier("replayCeremony")
                 GlassIconButton(systemName: "gamecontroller.fill") { showQuiz = true }
                     .accessibilityIdentifier("openQuiz")
                 GlassIconButton(systemName: "sparkles") { showWrapped = true }
@@ -81,6 +84,10 @@ struct AlbumView: View {
         }
         .fullScreenCover(isPresented: $showQuiz) {
             QuizView(vault: vault, memories: memories, stats: stats) { showQuiz = false }
+                .tripTheme(vault.theme)
+        }
+        .fullScreenCover(isPresented: $showReplay) {
+            RevealFlowView(vault: vault, onDone: { showReplay = false })
                 .tripTheme(vault.theme)
         }
     }
@@ -137,6 +144,7 @@ struct MemoryDetailView: View {
                 VideoPlayer(player: player)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
+                        PlaybackAudio.activate()
                         let p = AVPlayer(url: videoURL)
                         player = p
                         p.play()

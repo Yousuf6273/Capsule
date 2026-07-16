@@ -81,6 +81,7 @@ final class AppModel {
         if let profile {
             uploadQueue.uploaderId = profile.id
             vaults = (try? await vaultService.loadVaults(for: profile.id)) ?? []
+            unlockExpiredVaults()
         }
         isRestoringSession = false
     }
@@ -91,6 +92,23 @@ final class AppModel {
         profile = p
         uploadQueue.uploaderId = p.id
         vaults = (try? await vaultService.loadVaults(for: p.id)) ?? []
+    }
+
+    /// The mock stand-in for the server's scheduled unlock: any sealed vault
+    /// whose date has passed flips to unlocked. Runs at launch and whenever
+    /// the app returns to the foreground, so an expired vault is never stuck
+    /// waiting for the user to visit its countdown screen.
+    @MainActor
+    func unlockExpiredVaults() {
+        for idx in vaults.indices {
+            guard vaults[idx].state == .sealed,
+                  case .date(let unlockDate) = vaults[idx].unlockCondition,
+                  unlockDate <= .now else { continue }
+            vaults[idx].state = .unlocked
+            vaults[idx].unlockedAt = unlockDate
+            let vault = vaults[idx]
+            Task { try? await vaultService.update(vault: vault) }
+        }
     }
 
     /// Moves a vault from `.collecting` to `.sealed` — the moment the group

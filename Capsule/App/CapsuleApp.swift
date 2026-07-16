@@ -20,11 +20,18 @@ struct CapsuleApp: App {
         _model = State(initialValue: AppModel())
     }
 
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(model)
                 .preferredColorScheme(.dark)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Countdowns that expired while the app was closed/backgrounded
+            // unlock the moment the user comes back.
+            if phase == .active { model.unlockExpiredVaults() }
         }
     }
 }

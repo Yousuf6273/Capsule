@@ -270,4 +270,25 @@ final class CapsuleUITests: XCTestCase {
         XCTAssertTrue(unseal.waitForExistence(timeout: 10),
                       "an already-expired countdown must unlock immediately, not freeze at 00:00:00")
     }
+
+    /// The cinema experience can be replayed from the album, and closing it
+    /// returns to the album (not some other screen).
+    func testReplayCeremonyFromAlbum() {
+        signIn()
+        let hero = app.buttons["heroCard"]
+        XCTAssertTrue(hero.waitForExistence(timeout: 8), "hero card should exist")
+        hero.tap()
+        app.buttons["simulateUnlock"].tap()
+        skipCeremonyToAlbum()
+
+        // Replay from the album toolbar
+        app.buttons["replayCeremony"].tap()
+        XCTAssertTrue(app.buttons["unsealButton"].waitForExistence(timeout: 8),
+                      "replay should start the ceremony from the unseal screen")
+        let skip = app.buttons["skipReveal"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10), "skip should appear during replay")
+        skip.tap()
+        XCTAssertTrue(app.buttons["openQuiz"].waitForExistence(timeout: 8),
+                      "closing the replay must return to the album")
+    }
 }

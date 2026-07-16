@@ -41,6 +41,14 @@ struct RevealFlowView: View {
     @State private var coordinator: TripReplayCoordinator?
     @State private var showSkip = false
     let vault: Vault
+    /// When set (replaying from the album), called instead of relying on the
+    /// router's state switch — the presenting cover dismisses itself.
+    var onDone: (() -> Void)? = nil
+
+    private func finishReveal() {
+        model.markRevealCompleted(vaultId: vault.id)
+        onDone?()
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -57,16 +65,14 @@ struct RevealFlowView: View {
                 case .journey:
                     JourneyView(vault: vault, items: coordinator.journey) { coordinator.advance() }
                 case .finale:
-                    FinaleView {
-                        model.markRevealCompleted(vaultId: vault.id)
-                    }
+                    FinaleView { finishReveal() }
                 }
             }
 
             // Quiet escape hatch — appears after a beat, never steals the show.
             if showSkip, coordinator?.phase != .finale {
                 Button {
-                    model.markRevealCompleted(vaultId: vault.id)
+                    finishReveal()
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .semibold))
@@ -153,22 +159,27 @@ enum JourneyBuilder {
         return items
     }
 
-    /// Spread picks across the day. Videos are the emotional core of a vault,
-    /// so they win a slot first; captioned photos next; then chronology.
+    /// Videos are the heart of the vault — EVERY video plays in the journey.
+    /// Photos get curated down to `limit` per day (first, a captioned middle,
+    /// last) so the ceremony stays paced without dropping the good stuff.
     private static func highlights(from photos: [Memory], limit: Int) -> [Memory] {
-        guard photos.count > limit else { return photos }
-        var picks: [Memory] = []
-        if let video = photos.first(where: { $0.mediaType == .video }) {
-            picks.append(video)
+        var picks = photos.filter { $0.mediaType == .video }
+
+        let stills = photos.filter { $0.mediaType == .photo }
+        if stills.count <= limit {
+            picks.append(contentsOf: stills)
+        } else {
+            var stillPicks: [Memory] = []
+            if let first = stills.first { stillPicks.append(first) }
+            let captioned = stills.filter { $0.caption != nil }
+            if let mid = captioned.first(where: { !stillPicks.contains($0) })
+                ?? stills.dropFirst(stills.count / 2).first(where: { !stillPicks.contains($0) }) {
+                stillPicks.append(mid)
+            }
+            if let last = stills.last, !stillPicks.contains(last) { stillPicks.append(last) }
+            picks.append(contentsOf: stillPicks.prefix(limit))
         }
-        if let first = photos.first, !picks.contains(first) { picks.append(first) }
-        let captioned = photos.filter { $0.caption != nil }
-        if let mid = captioned.first(where: { !picks.contains($0) })
-            ?? photos.dropFirst(photos.count / 2).first(where: { !picks.contains($0) }) {
-            picks.append(mid)
-        }
-        if let last = photos.last, !picks.contains(last) { picks.append(last) }
-        return Array(picks.prefix(limit)).sorted { $0.capturedAt < $1.capturedAt }
+        return picks.sorted { $0.capturedAt < $1.capturedAt }
     }
 
     private static func numberWord(_ n: Int) -> String {

@@ -148,8 +148,14 @@ struct JourneyView: View {
 
     private var currentDuration: Double {
         switch items[index] {
-        case .chapter: return 2.4
-        case .photo(let memory): return memory.mediaType == .video ? 6.5 : 4.0
+        case .chapter:
+            return 2.4
+        case .photo(let memory):
+            if memory.mediaType == .video,
+               let url = model.memoryStore.videoURL(for: memory) {
+                return MediaPoster.slideDuration(of: url) // full video, up to 30s
+            }
+            return 4.0
         }
     }
 
@@ -190,8 +196,9 @@ struct JourneyView: View {
     }
 }
 
-/// Full-bleed, muted, looping video for a journey slide — the memory plays
-/// itself while the ceremony keeps control of pacing.
+/// Full-bleed video for a journey slide, WITH sound — these are the moments
+/// everyone sealed away; they play in full (looping only if the slide
+/// outlasts a very short clip).
 struct LoopingVideoSlide: View {
     let url: URL
     @State private var player: AVQueuePlayer?
@@ -210,9 +217,10 @@ struct LoopingVideoSlide: View {
             }
         }
         .onAppear {
+            PlaybackAudio.activate()
             let item = AVPlayerItem(url: url)
             let queue = AVQueuePlayer(playerItem: item)
-            queue.isMuted = true
+            queue.isMuted = false
             looper = AVPlayerLooper(player: queue, templateItem: item)
             queue.play()
             player = queue
@@ -222,5 +230,15 @@ struct LoopingVideoSlide: View {
             looper = nil
             player = nil
         }
+    }
+}
+
+/// Audio session for memory playback — `.playback` so video sound comes
+/// through even when the phone's silent switch is on (the default ambient
+/// category silently mutes, which reads as "videos have no audio").
+enum PlaybackAudio {
+    static func activate() {
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
 }
