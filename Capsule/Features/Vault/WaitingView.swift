@@ -141,7 +141,11 @@ struct HugeCountdown: View {
                 block(String(format: "%02d", p.hours), "hours")
                 block(String(format: "%02d", p.minutes), "mins")
             }
-            .onChange(of: p.isPast) { _, isPast in
+            // `initial: true` also fires immediately if the target time had
+            // already passed the moment this screen first appeared — a plain
+            // onChange only catches a false→true transition and would miss
+            // a vault that opens already-expired, leaving it stuck at 00:00:00.
+            .onChange(of: p.isPast, initial: true) { _, isPast in
                 guard isPast, !firedAlready else { return }
                 firedAlready = true
                 onReached()

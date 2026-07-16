@@ -249,4 +249,25 @@ final class CapsuleUITests: XCTestCase {
         XCTAssertTrue(unseal.waitForExistence(timeout: 20),
                       "vault must auto-unlock into the ceremony when the countdown reaches zero, without any button tap")
     }
+
+    /// Regression: if the unlock time had ALREADY passed the moment the
+    /// waiting screen first appears (isPast is true on frame one, never
+    /// transitions from false→true), it must still auto-unlock instead of
+    /// sitting frozen at 00:00:00 forever.
+    func testAlreadyExpiredCountdownUnlocksOnFirstAppearance() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["--uitest-reset"]
+        app.launchEnvironment = ["CAPSULE_TEST_UNLOCK_SECONDS": "-30"]
+        app.launch()
+
+        signIn()
+        let hero = app.buttons["heroCard"]
+        XCTAssertTrue(hero.waitForExistence(timeout: 8), "hero card should exist")
+        hero.tap()
+
+        let unseal = app.buttons["unsealButton"]
+        XCTAssertTrue(unseal.waitForExistence(timeout: 10),
+                      "an already-expired countdown must unlock immediately, not freeze at 00:00:00")
+    }
 }
