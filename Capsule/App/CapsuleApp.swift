@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct CapsuleApp: App {
+    @UIApplicationDelegateAdaptor(CapsuleAppDelegate.self) private var appDelegate
     @State private var model: AppModel
 
     init() {

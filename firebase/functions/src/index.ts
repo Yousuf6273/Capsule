@@ -89,14 +89,32 @@ export const joinByInviteCode = onCall(async (request) => {
   return { vaultId };
 });
 
-/** Notify members when a memory is sealed (throttling TODO: batch per hour). */
+/**
+ * A memory was sealed: bump the member-visible count and nudge the others.
+ * Notifications are throttled to at most one per vault per 15 minutes so a
+ * burst of uploads doesn't become a burst of pings.
+ */
 export const onMemorySealed = onDocumentCreated(
   "vaults/{vaultId}/memories/{memoryId}",
   async (event) => {
     const vaultId = event.params.vaultId;
-    await db.doc(`vaults/${vaultId}`).update({
-      memoryCount: FieldValue.increment(1),
-    });
+    const uploaderId = event.data?.data()?.uploaderId as string | undefined;
+    const vaultRef = db.doc(`vaults/${vaultId}`);
+
+    await vaultRef.update({ memoryCount: FieldValue.increment(1) });
+
+    const vault = (await vaultRef.get()).data();
+    const lastNudge = vault?.lastMemoryNudgeAt?.toMillis?.() ?? 0;
+    if (Date.now() - lastNudge < 15 * 60 * 1000) return;
+
+    await vaultRef.update({ lastMemoryNudgeAt: FieldValue.serverTimestamp() });
+    const name = vault?.memberNames?.[uploaderId ?? ""] ?? "Someone";
+    await notifyVault(
+      vaultId,
+      `${vault?.name ?? "Your capsule"} is filling up`,
+      `${name} just sealed a memory 🔒`,
+      uploaderId
+    );
   }
 );
 

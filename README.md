@@ -1,55 +1,107 @@
-# Capsule
+<p align="center">
+  <img src="Capsule/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="96" alt="Capsule icon">
+</p>
 
-Friends seal trip **videos and photos** into a locked vault — the "do not open until the trip ends" group, productised. **Nobody — including the uploader — can view content until the unlock condition is met.** Then everyone experiences the Trip Replay together: unseal → intro card → Trip by the Numbers → the Journey → finale → gallery.
+<h1 align="center">Capsule</h1>
 
-Design language: deep charcoal, rich purple breath, champagne gold, drifting golden dust. Every screen is a chapter, not a dashboard — Spotify Wrapped × Apple Journal × a keepsake.
+<p align="center">
+  <em>A locked vault for trip memories. Friends seal videos and photos all trip long — nobody can look, not even the uploader — and when the timer runs out, everyone experiences a cinematic reveal together.</em>
+</p>
 
-## Running
+<p align="center">
+  <b>Native iOS · SwiftUI · 34 source files · 12 end-to-end UI tests · solo project</b>
+</p>
 
-1. Install Xcode 16+ (the project uses the synchronized-folder format).
-2. `open Capsule.xcodeproj`, select an iOS 17+ simulator, hit Run.
-3. The app currently runs against **mock services** (local persistence, sample vaults matching the mockup) so every flow is testable without a backend. Sign in with any name.
+---
 
-Fonts (Unbounded, Inter, JetBrains Mono) are bundled in `Capsule/Resources/Fonts` (SIL OFL).
+## The idea
+
+Friend groups already do this by hand: they make a Snapchat group called *"do not open"*, dump the trip into it, and sit together at the end to watch it back. Capsule turns that ritual into a product — and makes the "do not open" part real. Once a memory is sealed it is **cryptographically inaccessible until the unlock moment** (server-enforced rules, not a client-side hide), and the opening is staged like a Spotify Wrapped for your trip rather than a folder of files.
+
+## What it looks like
+
+| Entrance | Home | Create a vault | Collecting |
+|:-:|:-:|:-:|:-:|
+| ![](docs/screenshots/01-entrance.png) | ![](docs/screenshots/02-home.png) | ![](docs/screenshots/03-create-vault.png) | ![](docs/screenshots/04-collecting.png) |
+
+| Countdown | Unseal | Intro card | Trip by the numbers |
+|:-:|:-:|:-:|:-:|
+| ![](docs/screenshots/05-countdown.png) | ![](docs/screenshots/06-unseal.png) | ![](docs/screenshots/07-intro-card.png) | ![](docs/screenshots/08-numbers.png) |
+
+| The journey | Album | Quiz | Wrapped |
+|:-:|:-:|:-:|:-:|
+| ![](docs/screenshots/09-journey.png) | ![](docs/screenshots/10-album.png) | ![](docs/screenshots/13-quiz-reveal.png) | ![](docs/screenshots/15-wrapped.png) |
+
+## Features
+
+- **Vaults** with a name, cover photo, invite code / share link and an unlock condition (a date & time, or "when everyone's ready").
+- **Blind contribution** — photos and videos are sealed on upload. The collecting grid shows only pixelated locked thumbnails (for videos, derived from the first frame). An **offline-tolerant upload queue** stages media on disk and drains when connectivity returns.
+- **Live countdown** everywhere the vault appears; when it reaches zero the vault unlocks by itself — on the countdown screen (with a fireworks burst), from Home, or after the app was closed (foreground sweep).
+- **The Trip Replay** — a five-stage ceremony: *tap-to-unseal vault dial → blurred-hero intro card → 5–8 dynamically chosen stat slides with animated count-ups → a chaptered journey (Arrival, Day Two, Sunset, Goodbye…) that plays every video in full with sound and curated photos with ken-burns motion → "Until the next adventure."* Replayable from the album any time.
+- **Solo trivia** on the trip ("who took this?", "which day?"), and a **Wrapped** stats screen with a shareable card rendered via `ImageRenderer`.
+- **Per-trip theming** — two dominant colours are extracted from the cover photo with Core Image's k-means filter and drive every gradient, glow and accent on that trip's screens.
+- **A cinematic shell** — deep charcoal, purple/gold/coral glows, drifting golden dust, spring-physics cards, staged entrances.
 
 ## Architecture
 
-- `DesignSystem/` — three-font system, fixed shell tokens, **`TripTheme`** (two colors extracted per trip via `CIKMeans`, injected through `@Environment(\.tripTheme)`; all trip screens re-theme, the shell doesn't), glass components.
-- `Models/` — `Vault`, `Member`, `Memory`, `UnlockCondition`.
-- `Services/` — `AuthServicing` / `VaultServicing` protocols. `Mock*` implementations back the UI now; Firebase implementations slot in behind the same interfaces (milestone 3).
-- `Features/` — Auth, Shell (custom glass bottom bar), Home, Create (cover photo → live theme extraction), Join (invite code + `capsule.app/j/CODE` deep link), Vault (Collecting / Waiting / Opened routing).
-- `firebase/` — the **server-side lock**: Firestore + Storage rules deny all reads of sealed media (for everyone) until a Cloud Function — the only writer of `vault.state` — flips it to `unlocked`. Functions: scheduled date unlock, everyone-ready unlock, invite-code join, recap-stats computation at unlock, FCM notifications.
-
-### Firebase setup (when ready for milestone 3)
-
-```sh
-npm i -g firebase-tools
-firebase login && firebase projects:create capsule-app
-cd firebase && firebase deploy --only firestore:rules,storage,functions
+```mermaid
+flowchart LR
+  subgraph UI[SwiftUI]
+    Home --> VaultRouter
+    VaultRouter -->|collecting| Collecting
+    VaultRouter -->|sealed| Countdown
+    VaultRouter -->|unlocked, not yet revealed| Replay[Trip Replay ceremony]
+    VaultRouter -->|unlocked, revealed| Album
+    Album --> Quiz & Wrapped & Replay
+  end
+  subgraph Model[AppModel · @Observable]
+    Vaults[(vaults)] --- Store[(MemoryStore)] --- Queue[(UploadQueue)]
+  end
+  UI <--> Model
+  Model --> Protocols{{AuthServicing · VaultServicing · UploadTransporting}}
+  Protocols -->|default| Mock[Local mock stack]
+  Protocols -->|GoogleService-Info.plist present| Firebase[Firebase: Auth · Firestore listeners · Storage · Functions · FCM]
 ```
 
-Then add the Firebase iOS SDK via SPM, drop `GoogleService-Info.plist` into `Capsule/Resources`, and implement `FirebaseAuthService` / `FirebaseVaultService`.
+- **Vault lifecycle** is a state machine `collecting → sealed → unlocked`, with `hasCompletedReveal` gating ceremony vs. album. `VaultRouter` re-routes reactively the instant state changes, so the unlock never needs a navigation push.
+- **Trust boundary.** In the live stack, `firebase/firestore.rules` and `storage.rules` deny *all* reads of sealed media — for every member — until a Cloud Function (the only writer of `state`) flips the vault to `unlocked`. See [`docs/BACKEND_SETUP.md`](docs/BACKEND_SETUP.md).
+- **Backend selection** is automatic: the app is written against protocols; `BackendFactory` picks Firebase when the SDK and config are present, otherwise the local mock. Nothing above the service layer knows the difference.
+- **Stat selection** scores ~12 candidate statistics per trip for "interestingness" and keeps the top 5–8, so the replay stays 30–60 s and never feels like a dashboard.
 
-## Milestones
+Full design write-up: [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md).
 
-1. ✅ Auth, create/join vault, invite flow (mock-backed)
-2. ✅ Blind contribution + offline queue (`UploadQueue`: instant local sealing, disk-persisted, NWPathMonitor drain)
-3. ✅ Server-enforced unlock — rules/functions written; client `FirebaseServices.swift` compiles automatically once the Firebase SDK is added (`#if canImport`)
-4. ✅ Color extraction + dynamic theming (`ThemeExtractor`, `TripTheme`)
-5. ✅ Unlock door sequence + pre-reveal recap teaser (mockup timing: text 0.3s → light 1.4s → doors 2.0s)
-6. ✅ Reveal slideshow (develop effect, ken-burns, story bars, tap navigation)
-7. ✅ Quiz mode (prediction, guess-who-took, which-day; simulated friends via `QuizTransporting` — Firestore listener transport slots in)
-8. ✅ Wrapped screen + shareable card (`ImageRenderer` → `ShareLink`)
-9. ✅ Permanent day-grouped album + memory detail
+## Running it
 
-### Beyond the original milestones
+```bash
+git clone https://github.com/Yousuf6273/Capsule.git
+open Capsule/Capsule.xcodeproj      # Xcode 16+, iOS 17+
+```
+Pick an iPhone simulator, **⌘R**. Sign in with any name. The demo path: tap the **Kefalonia** hero → *Skip ahead — simulate unlock* → **Tap to Unseal** and watch the ceremony. Create your own vault with an unlock time a few minutes out to see the real countdown → fireworks → reveal.
 
-- **Trip Replay** (replaces doors/teaser/slideshow): `UnsealView` (tap-to-unseal vault dial, golden bloom, dust burst) → `IntroCardView` (blurred hero + glass title card) → `NumbersView` (5-8 dynamically-scored stat slides with eased count-ups) → `JourneyView` (chapter cards + highlights, ken-burns photos, **looping muted video slides**) → `FinaleView` ("Until the next adventure.") → gallery. Quiz + wrapped live in the gallery toolbar. A quiet ✕ appears after 4s to skip the ceremony.
-- **Video-first pipeline**: picker accepts videos, `UploadQueue` stages originals with their true container extension and derives locked thumbs from the opening frame (`MediaPoster`), `MemoryStore` serves poster frames + playable URLs, album cells carry a play badge, detail view plays with sound.
-- **App-wide atmosphere**: `ShellBackground` (charcoal + purple/gold/coral glows + `GoldenDust`), `FloatIn` staggered entrances, `PressableCardStyle` spring presses, `GoldButtonStyle` champagne CTAs, floating glass nav pill, staged auth entrance.
+**Tests:** ⌘U, or
 
-**Demo path in the simulator:** sign in → tap the Kefalonia hero → "Skip ahead — simulate unlock ✨" (DEBUG-only button) → Tap to Unseal → intro → numbers → journey → finale → gallery.
+```bash
+xcodebuild test -project Capsule.xcodeproj -scheme Capsule \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+```
+Twelve XCUITest scenarios drive the real app end-to-end: sign-in, every sheet and back-navigation path (no dead ends), the collecting flow, the countdown reaching zero *without* any tap, the already-expired edge case, the full ceremony, the solo quiz, sharing, and replay. They launch with `--uitest-reset` for deterministic state.
 
-### Going live (the remaining backend step)
+## Status
 
-The app runs fully on the mock stack. To go live: create a Firebase project, deploy `firebase/`, add the Firebase iOS SDK via SPM (Auth, Firestore, Storage, Functions, Messaging), drop in `GoogleService-Info.plist`, and swap the `AppModel()` initializer to the Firebase services. Push notifications additionally need an Apple Developer account + APNs key uploaded to FCM.
+| Area | State |
+|---|---|
+| App, design system, ceremony, quiz, album, theming | ✅ complete |
+| Offline upload queue, video pipeline (audio, full length, poster frames) | ✅ complete |
+| Automated end-to-end tests | ✅ 12 scenarios, all passing |
+| Server-enforced lock (rules + Cloud Functions) | ✅ written; deploy per `docs/BACKEND_SETUP.md` |
+| Realtime multi-user sync, post-unlock media download, push client | ✅ written (compile-gated on the Firebase SDK) |
+| Live Firebase project | ⏳ requires the owner's Firebase account (~30 min, guide included) |
+| App Store / TestFlight | ⏳ requires Apple Developer Program |
+
+## Stack
+
+Swift 5 · SwiftUI · Observation · PhotosUI · AVFoundation / AVKit · Core Image (`CIKMeans`) · Canvas + TimelineView animations · XCTest UI testing · Firebase (Auth, Firestore, Storage, Functions, Messaging) · TypeScript Cloud Functions
+
+## License
+
+MIT — see [LICENSE](LICENSE). Fonts under the SIL OFL.

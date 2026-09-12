@@ -14,9 +14,11 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
+import FirebaseMessaging
 import FirebaseStorage
 import Foundation
 import UIKit
+import UserNotifications
 
 enum FirebaseBootstrap {
     static func configureIfNeeded() {
@@ -53,7 +55,7 @@ final class FirebaseAuthService: AuthServicing {
     }
 }
 
-final class FirebaseVaultService: VaultServicing {
+final class FirebaseVaultService: VaultServicing, VaultObserving, MemorySyncing {
     private var db: Firestore { Firestore.firestore() }
 
     func loadVaults(for userId: String) async throws -> [Vault] {
@@ -61,6 +63,65 @@ final class FirebaseVaultService: VaultServicing {
             .whereField("memberIds", arrayContains: userId)
             .getDocuments()
         return snapshot.documents.compactMap { Self.vault(from: $0, currentUserId: userId) }
+    }
+
+    // ── Realtime multi-user sync ─────────────────────────────────
+    // A Firestore snapshot listener on "every vault I'm a member of". Any
+    // member's action — a friend joining, a memory sealed, the Cloud
+    // Function flipping state to unlocked — lands on every phone within
+    // listener latency. This is what makes the synchronized reveal real.
+
+    func observeVaults(for userId: String) -> AsyncStream<[Vault]> {
+        AsyncStream { continuation in
+            let registration = db.collection("vaults")
+                .whereField("memberIds", arrayContains: userId)
+                .addSnapshotListener { snapshot, _ in
+                    guard let snapshot else { return }
+                    let vaults = snapshot.documents.compactMap {
+                        Self.vault(from: $0, currentUserId: userId)
+                    }
+                    continuation.yield(vaults)
+                }
+            continuation.onTermination = { _ in registration.remove() }
+        }
+    }
+
+    // ── Post-unlock memory sync ──────────────────────────────────
+    // Only succeeds once the vault is unlocked — before that the rules
+    // reject both the metadata read and the media download, which is the
+    // whole trust premise. Media lands in LocalStore so the ceremony and
+    // album run unchanged off local files.
+
+    func syncMemories(vaultId: String) async throws -> [Memory] {
+        let snapshot = try await db.collection("vaults/\(vaultId)/memories").getDocuments()
+        let storage = Storage.storage()
+        var memories: [Memory] = []
+
+        for doc in snapshot.documents {
+            let data = doc.data()
+            let mediaType = MediaType(rawValue: data["mediaType"] as? String ?? "photo") ?? .photo
+            let ext = (data["fileExtension"] as? String) ?? (mediaType == .video ? "mov" : "jpg")
+            let fileName = "sealed-\(doc.documentID).\(ext)"
+            let localURL = LocalStore.url(for: fileName)
+
+            if !FileManager.default.fileExists(atPath: localURL.path) {
+                _ = try await storage.reference(withPath: "vaults/\(vaultId)/media/\(doc.documentID)")
+                    .writeAsync(toFile: localURL)
+            }
+
+            memories.append(Memory(
+                id: doc.documentID,
+                vaultId: vaultId,
+                uploaderId: data["uploaderId"] as? String ?? "",
+                mediaType: mediaType,
+                lockedThumbFileName: nil,
+                mediaFileName: fileName,
+                capturedAt: (data["capturedAt"] as? Timestamp)?.dateValue() ?? .now,
+                uploadedAt: (data["uploadedAt"] as? Timestamp)?.dateValue() ?? .now,
+                caption: data["caption"] as? String,
+                byteSize: data["byteSize"] as? Int64 ?? 0))
+        }
+        return memories
     }
 
     func createVault(name: String, unlockCondition: UnlockCondition,
@@ -209,6 +270,7 @@ struct FirebaseUploadTransport: UploadTransporting {
         try await db.document("vaults/\(item.vaultId)/memories/\(item.id)").setData([
             "uploaderId": uploaderId,
             "mediaType": item.mediaType.rawValue,
+            "fileExtension": (item.originalFileName as NSString).pathExtension,
             "capturedAt": Timestamp(date: item.capturedAt),
             "uploadedAt": FieldValue.serverTimestamp(),
             "byteSize": item.byteSize,
@@ -225,6 +287,48 @@ struct FirebaseUploadTransport: UploadTransporting {
             mediaFileName: item.originalFileName,
             capturedAt: item.capturedAt, uploadedAt: .now,
             caption: nil, byteSize: item.byteSize)
+    }
+}
+
+// ── Push notifications ───────────────────────────────────────────
+// APNs → FCM. The Cloud Functions in firebase/functions read
+// users/{uid}.fcmToken to notify on: vault unlocked, member joined,
+// memory sealed. Permission is requested once, after sign-in, so the
+// prompt has context ("so we can tell you the moment it opens").
+
+final class FirebasePush: NSObject, PushRegistering, MessagingDelegate {
+    static let shared = FirebasePush()
+    private var userId: String?
+
+    func registerForPush(userId: String) async {
+        self.userId = userId
+        Messaging.messaging().delegate = self
+
+        let granted = (try? await UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        guard granted else { return }
+
+        await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
+        if let token = try? await Messaging.messaging().token() {
+            await save(token: token)
+        }
+    }
+
+    func didReceiveAPNsToken(_ token: Data) {
+        Messaging.messaging().apnsToken = token
+    }
+
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        guard let fcmToken else { return }
+        Task { await save(token: fcmToken) }
+    }
+
+    private func save(token: String) async {
+        guard let userId else { return }
+        try? await Firestore.firestore().document("users/\(userId)").setData([
+            "fcmToken": token,
+            "fcmUpdatedAt": FieldValue.serverTimestamp(),
+        ], merge: true)
     }
 }
 

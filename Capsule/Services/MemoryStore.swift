@@ -65,6 +65,16 @@ final class MemoryStore {
         persist()
     }
 
+    /// Merges memories pulled from the backend after unlock; records already
+    /// present (e.g. our own uploads) keep their local files.
+    func mergeRemote(_ remote: [Memory]) {
+        let known = Set(memories.map(\.id))
+        let fresh = remote.filter { !known.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+        memories.append(contentsOf: fresh)
+        persist()
+    }
+
     func myDrops(vaultId: String, userId: String) -> [Memory] {
         memories(for: vaultId).filter { $0.uploaderId == userId }
     }

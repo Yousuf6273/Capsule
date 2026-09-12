@@ -19,7 +19,14 @@ final class CapsuleUITests: XCTestCase {
     func signIn() {
         let field = app.textFields["nameField"]
         XCTAssertTrue(field.waitForExistence(timeout: 10), "name field should appear")
+        // The entrance animates in; a tap can land before the field can take
+        // focus. Wait for focus (retrying the tap once) before typing.
         field.tap()
+        let focused = NSPredicate(format: "hasKeyboardFocus == true")
+        if XCTWaiter().wait(for: [expectation(for: focused, evaluatedWith: field)], timeout: 3) != .completed {
+            field.tap()
+            _ = XCTWaiter().wait(for: [expectation(for: focused, evaluatedWith: field)], timeout: 3)
+        }
         field.typeText("Tester")
         app.buttons["Begin"].tap()
         XCTAssertTrue(app.staticTexts["Your Vaults"].waitForExistence(timeout: 10),

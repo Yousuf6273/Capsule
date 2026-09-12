@@ -33,15 +33,21 @@ final class AppModel {
     let vaultService: VaultServicing
     let memoryStore: MemoryStore
     let uploadQueue: UploadQueue
+    /// True when the Firebase backend is live (see BackendFactory).
+    let isLiveBackend: Bool
+
+    private var vaultObservation: Task<Void, Never>?
+    private var syncedVaultIds: Set<String> = []
 
     @MainActor
-    init(auth: AuthServicing = MockAuthService(),
-         vaultService: VaultServicing = MockVaultService()) {
-        self.auth = auth
-        self.vaultService = vaultService
+    init(auth: AuthServicing? = nil, vaultService: VaultServicing? = nil) {
+        let backend = BackendFactory.make()
+        self.auth = auth ?? backend.auth
+        self.vaultService = vaultService ?? backend.vaults
+        self.isLiveBackend = auth == nil && vaultService == nil && backend.isLive
         let store = MemoryStore()
         self.memoryStore = store
-        self.uploadQueue = UploadQueue()
+        self.uploadQueue = UploadQueue(transport: backend.uploadTransport)
         uploadQueue.memoryStore = store
         uploadQueue.onUploaded = { [weak self] memory in
             guard let self, let idx = vaults.firstIndex(where: { $0.id == memory.vaultId }) else { return }
@@ -51,6 +57,54 @@ final class AppModel {
     }
 
     var isSignedIn: Bool { profile != nil }
+
+    // ── Live backend hooks (no-ops on the mock stack) ────────────
+
+    /// Subscribes to realtime vault changes so every member's phone stays in
+    /// step — including the server flipping a vault to unlocked.
+    @MainActor
+    private func startObservingVaults(userId: String) {
+        guard let observer = vaultService as? VaultObserving else { return }
+        vaultObservation?.cancel()
+        vaultObservation = Task { [weak self] in
+            for await remote in observer.observeVaults(for: userId) {
+                guard let self, !Task.isCancelled else { return }
+                // Keep local-only flags (reveal completed) across refreshes.
+                let local = Dictionary(uniqueKeysWithValues: vaults.map { ($0.id, $0) })
+                vaults = remote.map { v in
+                    var merged = v
+                    if let l = local[v.id] { merged.hasCompletedReveal = merged.hasCompletedReveal || l.hasCompletedReveal }
+                    return merged
+                }
+                for vault in vaults where vault.state == .unlocked {
+                    syncMemoriesIfNeeded(vaultId: vault.id)
+                }
+            }
+        }
+    }
+
+    /// Pulls an unlocked vault's sealed media to this device, once.
+    @MainActor
+    func syncMemoriesIfNeeded(vaultId: String) {
+        guard let syncer = vaultService as? MemorySyncing,
+              !syncedVaultIds.contains(vaultId) else { return }
+        syncedVaultIds.insert(vaultId)
+        Task {
+            if let remote = try? await syncer.syncMemories(vaultId: vaultId) {
+                memoryStore.mergeRemote(remote)
+            } else {
+                syncedVaultIds.remove(vaultId) // retry next time
+            }
+        }
+    }
+
+    @MainActor
+    private func registerPushIfAvailable(userId: String) {
+        #if canImport(FirebaseMessaging)
+        guard isLiveBackend else { return }
+        Task { await FirebasePush.shared.registerForPush(userId: userId) }
+        #endif
+    }
 
     /// Featured vault for the hero card: the sealed vault unlocking soonest,
     /// else the most recently active one.
@@ -82,6 +136,8 @@ final class AppModel {
             uploadQueue.uploaderId = profile.id
             vaults = (try? await vaultService.loadVaults(for: profile.id)) ?? []
             unlockExpiredVaults()
+            startObservingVaults(userId: profile.id)
+            registerPushIfAvailable(userId: profile.id)
         }
         isRestoringSession = false
     }
@@ -92,6 +148,8 @@ final class AppModel {
         profile = p
         uploadQueue.uploaderId = p.id
         vaults = (try? await vaultService.loadVaults(for: p.id)) ?? []
+        startObservingVaults(userId: p.id)
+        registerPushIfAvailable(userId: p.id)
     }
 
     /// The mock stand-in for the server's scheduled unlock: any vault whose

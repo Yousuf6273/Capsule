@@ -19,11 +19,15 @@ struct VaultRouter: View {
                 case .sealed:
                     WaitingView(vault: vault)
                 case .unlocked:
-                    if vault.hasCompletedReveal {
-                        AlbumView(vault: vault)
-                    } else {
-                        RevealFlowView(vault: vault)
+                    Group {
+                        if vault.hasCompletedReveal {
+                            AlbumView(vault: vault)
+                        } else {
+                            RevealFlowView(vault: vault)
+                        }
                     }
+                    // Live backend: make sure this vault's media is on-device.
+                    .task { model.syncMemoriesIfNeeded(vaultId: vault.id) }
                 }
             } else {
                 Text("This vault no longer exists.")
